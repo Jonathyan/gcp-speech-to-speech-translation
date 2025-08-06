@@ -87,6 +87,12 @@ We bouwen eerst de kernlogica van de service. De focus ligt op het creëren van 
     *   Implementeer logging om verbindingen en disconnecties te volgen.
     *   Overweeg het gebruik van een message queue (zoals Google Cloud Pub/Sub) voor het broadcasten van berichten naar de luisteraars.
 
+---
+
+## Deel 2: Frontend Ontwikkeling (Web App)
+
+We bouwen de interface voor de spreker en de luisteraar.
+
 ### Iteratie 8: Basis UI & WebSocket Connectie
 
 *   **Doel:** Een visuele interface creëren en de connectiviteit met de backend valideren vanuit een echte browseromgeving.
@@ -96,14 +102,6 @@ We bouwen eerst de kernlogica van de service. De focus ligt op het creëren van 
     3.  De test slaagt als het JavaScript een WebSocket-verbinding probeert op te zetten (mock de `WebSocket` constructor) en de statusindicator op de pagina wordt geüpdatet naar "Verbinden...".
 *   **Implementatie - Vraag de LLM om:**
     1.  Een `index.html` te maken met knoppen voor "Start Uitzending" en "Luister mee", en een `<div>` voor statusberichten.
-
----
-
-## Deel 2: Frontend Ontwikkeling (Web App)
-
-We bouwen de interface voor de spreker en de luisteraar.
-
-### Iteratie 8: Basis UI & WebSocket Connectie
 
 ### Iteratie 9: Audio Opvangen en Versturen (Spreker)
 * **Implementatie - Vraag de LLM om:**
