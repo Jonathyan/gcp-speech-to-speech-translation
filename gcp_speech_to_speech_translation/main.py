@@ -7,17 +7,17 @@ app = FastAPI()
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """
-    Handles WebSocket connections for Iteration 1.
+    Handles WebSocket connections for the echo service (Iteration 2).
 
-    It accepts a connection, prints a confirmation message, and then waits
-    in a loop to keep the connection open. It handles disconnection gracefully.
+    It accepts a connection, then enters a loop where it receives a JSON
+    message and sends the exact same message back to the client.
     """
     await websocket.accept()
     print("Client connected")
     try:
         while True:
-            # We must wait for messages to keep the connection alive.
-            await websocket.receive_text()
+            data = await websocket.receive_json()
+            await websocket.send_json(data)
     except WebSocketDisconnect:
         print("Client disconnected")
 

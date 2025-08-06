@@ -11,13 +11,21 @@ The development follows a strict Test-Driven Development (TDD) approach, with ea
 *   **Testing:** `pytest` and `pytest-asyncio`.
 *   **Dependency Management:** Poetry.
 
-## Current Status
+## Project Status
 
-**Iteration 1: Basis WebSocket Server - COMPLETED**
+### Completed
+**Iteration 1: Basis WebSocket Server**
 
 *   A basic FastAPI server is running.
 *   A `/ws` endpoint is available and accepts WebSocket connections.
-*   A `pytest` test (`tests/test_websocket.py`) verifies that the WebSocket connection handshake is successful.
+*   A `pytest` test (`tests/test_websocket.py`) verifies that the WebSocket connection handshake is successful, ensuring the basic infrastructure is in place.
+
+### Next Steps
+**Iteration 2: Echo Service**
+
+*   Implement two-way communication over the WebSocket.
+*   The server will receive a JSON message and send the exact same message back to the client.
+*   This will be covered by a new test to validate data integrity.
 
 ## Development
 
