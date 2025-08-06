@@ -21,7 +21,10 @@ async def websocket_endpoint(websocket: WebSocket):
     message and sends the exact same message back to the client.
     """
     await websocket.accept()
-    client_id = f"{websocket.client.host}:{websocket.client.port}"
+    # --- Fix for TestClient ---
+    # websocket.client is None when running in TestClient. We provide a fallback.
+    client_id = f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "testclient"
+
     logging.info(f"Client connected: {client_id}")
     try:
         while True:
