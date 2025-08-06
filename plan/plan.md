@@ -1,4 +1,4 @@
-# Plan: Gefaseerde Bouw van Live Vertaalservice (Fase 1)
+# Plan: Gefaseerde Bouw van Live Vertaalservice
 
 Dit document beschrijft de stapsgewijze ontwikkeling van de live vertaalservice met een Test-Driven Development (TDD) aanpak. Elke iteratie is een kleine, afgebakende stap die onafhankelijk getest kan worden, wat zorgt voor een robuuste en voorspelbare codebase. De TDD-methode dwingt ons om eerst na te denken over het *gewenste gedrag* (de test) voordat we de implementatie schrijven, wat leidt tot een beter ontwerp en minder bugs.
 
