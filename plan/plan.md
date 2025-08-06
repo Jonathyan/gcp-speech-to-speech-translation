@@ -8,7 +8,7 @@ Dit document beschrijft de stapsgewijze ontwikkeling van de live vertaalservice 
 * **Frontend:** Plain HTML, CSS, en JavaScript, gehost op Firebase Hosting. Deze keuze minimaliseert de complexiteit en opstartkosten, ideaal voor een snelle validatie van het product. We vermijden bewust grote frameworks om de ontwikkelsnelheid in deze fase te maximaliseren.
 * **Testen:** `pytest` voor de backend, vanwege zijn eenvoud, krachtige features zoals 'fixtures', en de naadloze integratie met FastAPI. Voor de frontend wordt `jest` aangeraden voor het testen van de JavaScript-logica in een gesimuleerde browseromgeving.
 
-![Alt tekst](gcp-arch.png "Solution Architecture in GCP")
+![Alt tekst](../gcp-arch.png "Solution Architecture in GCP")
 
 ---
 
