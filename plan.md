@@ -26,7 +26,7 @@ We bouwen eerst de kernlogica van de service. De focus ligt op het creëren van 
     1.  Een `main.py` te maken met een standaard FastAPI app-instantie.
     2.  Een WebSocket endpoint `/ws` toe te voegen dat een inkomende verbinding accepteert met `websocket.accept()` en een "Client connected" bericht print op de server ter bevestiging. Dit logbericht is cruciaal voor de eerste fase van debugging.
 
-### Iteratie 2: Echo Service
+### Iteratie 2: Echo Service met Error Handling
 
 * **Doel:** Bevestigen dat de tweerichtingscommunicatie werkt. De server moet niet alleen verbindingen accepteren, maar ook data kunnen ontvangen en correct terugsturen. Dit valideert dat onze dataformaten en de verbinding stabiel zijn.
 * **TDD - Schrijf eerst deze test:**
@@ -37,7 +37,7 @@ We bouwen eerst de kernlogica van de service. De focus ligt op het creëren van 
     1.  De `/ws` endpoint-functie aan te passen met een `while True` loop om continu te luisteren naar berichten, ingebed in een `try...except` blok om netjes af te sluiten wanneer de client de verbinding verbreekt.
     2.  Binnen de loop, gebruik `websocket.receive_json()` en stuur het ontvangen object direct terug met `websocket.send_json()`.
 
-### Iteratie 3: Mocked API Pijplijn
+### Iteratie 3: Mocked API Pijplijn met Foutsimulatie
 
 * **Doel:** De volledige applicatielogica simuleren zonder afhankelijkheid van externe (en kostbare) API's. Dit stelt ons in staat om de flow, de asynchrone aanroepen en de timing van de hele pijplijn te testen in een geïsoleerde, voorspelbare omgeving.
 * **TDD - Schrijf eerst deze test:**
@@ -45,12 +45,15 @@ We bouwen eerst de kernlogica van de service. De focus ligt op het creëren van 
     2.  De test slaagt als de client na een korte, voorspelbare vertraging (ca. 150ms, de som van de mock-vertragingen) een ander binair audio-chunk terugkrijgt, wat de "vertaalde" audio representeert. Dit valideert de end-to-end flow.
 * **Implementatie - Vraag de LLM om:**
     1.  Drie asynchrone placeholder (mock) functies te maken. Het `async def` en `await asyncio.sleep()` is cruciaal om het wachten op een echte netwerk-API te simuleren.
-        * `async def mock_speech_to_text(audio_chunk)`: Wacht 50ms en geeft de string `"mocked text"` terug.
-        * `async def mock_translation(text)`: Wacht 50ms en geeft de string `"mocked translation"` terug.
-        * `async def mock_text_to_speech(text)`: Wacht 50ms en geeft een hardcoded byte-string `b'mock_audio_output'` terug.
+        *   `async def mock_speech_to_text(audio_chunk)`: Wacht 50ms en geeft de string `"mocked text"` terug. Simuleer af en toe een error.
+        *   `async def mock_translation(text)`: Wacht 50ms en geeft de string `"mocked translation"` terug.
+        *   `async def mock_text_to_speech(text)`: Wacht 50ms en geeft een hardcoded byte-string `b'mock_audio_output'` terug.
     2.  De `/ws` handler aan te passen om deze drie functies na elkaar aan te roepen (met `await`) wanneer er een audio-chunk binnenkomt via `websocket.receive_bytes()`.
+*   **Aanvullende overwegingen:**
+    *   Voeg logica toe om willekeurig fouten te genereren in de mock API's (bijvoorbeeld met behulp van `random.random()`).
+    *   Test hoe de applicatie omgaat met deze fouten (retry, fallback, error logging).
 
-### Iteratie 4: Integratie Speech-to-Text API
+### Iteratie 4: Integratie Speech-to-Text API met Environment Variabelen
 
 * **Doel:** De eerste stap van de pijplijn vervangen door een echte service. Dit is een cruciale integratietest die onze app verbindt met de buitenwereld en controleert op authenticatie-, configuratie- en netwerkproblemen.
 * **TDD - Schrijf eerst deze test (integratietest):**
@@ -61,7 +64,7 @@ We bouwen eerst de kernlogica van de service. De focus ligt op het creëren van 
     2.  De `mock_speech_to_text` functie te vervangen door een echte implementatie die de streaming `recognize` functie van de API gebruikt. Dit is complexer dan een simpele call en vereist het correct configureren van de stream.
     3.  Authenticatie via een service account JSON-sleutel te configureren, waarbij de bestandsnaam uit een environment variable wordt gelezen (`os.getenv('GOOGLE_APPLICATION_CREDENTIALS')`). Dit is een security best practice om te voorkomen dat sleutels in de code worden vastgelegd.
 
-### Iteratie 5 & 6: Integratie Translation & TTS API
+### Iteratie 5 & 6: Integratie Translation & TTS API met Monitoring
 
 * **Doel:** De volledige pijplijn operationeel maken met echte, externe services en de end-to-end latency valideren.
 * **Proces:** Herhaal het proces van Iteratie 4 voor de andere twee API's, stap voor stap. Dit voorkomt dat we meerdere integratieproblemen tegelijk moeten debuggen.
@@ -79,6 +82,20 @@ We bouwen eerst de kernlogica van de service. De focus ligt op het creëren van 
     1.  Een `ConnectionManager` klasse te maken die in een dictionary per `stream_id` een lijst van actieve luisteraar-WebSocket-objecten bijhoudt. Deze klasse moet ook methodes hebben om verbindingen toe te voegen, te verwijderen en te broadcasten.
     2.  De WebSocket-logica op te splitsen in twee endpoints: `/ws/speak/{stream_id}` en `/ws/listen/{stream_id}`.
     3.  Wanneer de spreker iets stuurt, moet de server de pijplijn doorlopen en het resultaat naar alle luisteraars in de `ConnectionManager` voor die `stream_id` sturen met de `broadcast` methode.
+*   **Aanvullende overwegingen:**
+    *   Gebruik een thread-safe datastructuur voor de dictionary in de `ConnectionManager` om concurrentie te voorkomen (bijvoorbeeld `threading.Lock`).
+    *   Implementeer logging om verbindingen en disconnecties te volgen.
+    *   Overweeg het gebruik van een message queue (zoals Google Cloud Pub/Sub) voor het broadcasten van berichten naar de luisteraars.
+
+### Iteratie 8: Basis UI & WebSocket Connectie
+
+*   **Doel:** Een visuele interface creëren en de connectiviteit met de backend valideren vanuit een echte browseromgeving.
+*   **TDD - Schrijf eerst deze test:**
+    1.  Maak een test die de webpagina laadt in een gesimuleerde DOM (met `jest`).
+    2.  De test simuleert een klik op een "Start Uitzending" knop.
+    3.  De test slaagt als het JavaScript een WebSocket-verbinding probeert op te zetten (mock de `WebSocket` constructor) en de statusindicator op de pagina wordt geüpdatet naar "Verbinden...".
+*   **Implementatie - Vraag de LLM om:**
+    1.  Een `index.html` te maken met knoppen voor "Start Uitzending" en "Luister mee", en een `<div>` voor statusberichten.
 
 ---
 
@@ -88,21 +105,7 @@ We bouwen de interface voor de spreker en de luisteraar.
 
 ### Iteratie 8: Basis UI & WebSocket Connectie
 
-* **Doel:** Een visuele interface creëren en de connectiviteit met de backend valideren vanuit een echte browseromgeving.
-* **TDD - Schrijf eerst deze test:**
-    1.  Maak een test die de webpagina laadt in een gesimuleerde DOM (met `jest`).
-    2.  De test simuleert een klik op een "Start Uitzending" knop.
-    3.  De test slaagt als het JavaScript een WebSocket-verbinding probeert op te zetten (mock de `WebSocket` constructor) en de statusindicator op de pagina wordt geüpdatet naar "Verbinden...".
-* **Implementatie - Vraag de LLM om:**
-    1.  Een `index.html` te maken met knoppen voor "Start Uitzending" en "Luister mee", en een `<div>` voor statusberichten.
-    2.  Een `app.js` te schrijven die een WebSocket-verbinding maakt met de backend wanneer op een knop wordt geklikt en de status (`onopen`, `onclose`, `onerror`) in de div toont.
-
 ### Iteratie 9: Audio Opvangen en Versturen (Spreker)
-
-* **Doel:** De kernfunctionaliteit voor de spreker implementeren: het streamen van live audio vanuit de browser.
-* **TDD - Schrijf eerst deze test:**
-    1.  De test simuleert het klikken op "Start Uitzending" en het verlenen van microfoontoestemming (mock de `getUserMedia` functie).
-    2.  De test slaagt als de `MediaRecorder` API wordt gestart en de `socket.send()` functie periodiek wordt aangeroepen met `Blob` objecten (audio-data).
 * **Implementatie - Vraag de LLM om:**
     1.  De `app.js` uit te breiden.
     2.  Gebruik `navigator.mediaDevices.getUserMedia` om toegang tot de microfoon te vragen, met een correcte afhandeling voor als de gebruiker toestemming weigert.
@@ -121,7 +124,7 @@ We bouwen de interface voor de spreker en de luisteraar.
     4.  Implementeer een afspeel-mechanisme dat de audio-chunks uit de queue naadloos achter elkaar afspeelt om een continue, ononderbroken stroom te creëren, en rekening houdt met netwerk-jitter.
 
 ---
-
+ 
 ## Deel 3: Deployment
 
 ### Iteratie 11: Deployment naar GCP & Firebase
