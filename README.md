@@ -26,11 +26,18 @@ The development follows a strict Test-Driven Development (TDD) approach, with ea
 *   It correctly receives a JSON message and sends the exact same message back to the client, validated by a dedicated `pytest` test.
 *   **Refactoring:** The implementation was improved with professional logging, robust error handling for invalid data, and a fix to ensure compatibility with `pytest`'s `TestClient`.
 
-### Next Steps
 **Iteration 3: Mocked API Pijplijn**
 
-*   Simulate the entire backend logic (Speech-to-Text -> Translation -> Text-to-Speech) using mock functions.
-*   This will allow testing the full application flow without relying on external (and costly) Google Cloud APIs.
+*   The full backend logic (Speech-to-Text -> Translation -> Text-to-Speech) is now simulated using mock functions with realistic delays.
+*   The WebSocket handler can process binary audio data, run it through the mock pipeline, and return a binary audio response.
+*   The end-to-end flow, including timing (~150ms) and data types, is validated by a `pytest` test.
+*   Graceful error handling for simulated API failures is implemented within the pipeline.
+
+### Next Steps
+**Iteration 4: Google Cloud Speech-to-Text Integration**
+
+*   Replace the `mock_speech_to_text` service with a real integration with the Google Cloud Speech-to-Text API.
+*   Focus on streaming audio from the client to the GCP API and receiving transcriptions back.
 
 ## Development
 
