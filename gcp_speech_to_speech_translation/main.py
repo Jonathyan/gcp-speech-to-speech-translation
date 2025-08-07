@@ -1,53 +1,85 @@
 import logging
-import uvicorn
+import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 
-# --- Best Practice: Use Python's logging module instead of print() ---
-# This provides timestamps, log levels, and is more configurable.
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+# Importeer de mock services vanuit hetzelfde package
+from .services import (
+    mock_speech_to_text,
+    mock_text_to_speech,
+    mock_translation,
 )
 
-app = FastAPI()
+# Configureer logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+app = FastAPI(
+    title="Live Translation Service",
+    description="A FastAPI service for real-time speech-to-speech translation using WebSockets.",
+    version="0.3.0",
+)
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """
-    Handles WebSocket connections for the echo service (Iteration 2).
+    Verwerkt de WebSocket-verbinding voor de vertaalservice.
 
-    It accepts a connection, then enters a loop where it receives a JSON
-    message and sends the exact same message back to the client.
+    Dit endpoint kan twee soorten data verwerken:
+    1.  Binaire audio-chunks: Deze worden verwerkt via een gesimuleerde
+        STT -> Translate -> TTS pijplijn.
+    2.  JSON-berichten: Deze worden teruggekaatst naar de client voor
+        testen en backward compatibility.
     """
     await websocket.accept()
-    # --- Fix for TestClient ---
-    # websocket.client is None when running in TestClient. We provide a fallback.
-    client_id = f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "testclient"
+    # De TestClient vult websocket.client niet altijd in.
+    # We bieden een fallback om AttributeError in tests te voorkomen.
+    if websocket.client:
+        client_id = f"{websocket.client.host}:{websocket.client.port}"
+    else:
+        client_id = "testclient"
+    logging.info(f"WebSocket-verbinding geaccepteerd van {client_id}")
 
-    logging.info(f"Client connected: {client_id}")
     try:
         while True:
-            # --- Improvement: More specific error handling ---
-            # This inner try/except handles errors with a single message
-            # without disconnecting the client.
-            try:
-                data = await websocket.receive_json()
-                logging.info(f"Received from {client_id}: {data}")
-                await websocket.send_json(data)
-                logging.info(f"Echoed to {client_id}: {data}")
-            except ValueError:
-                # This is raised by receive_json() if the data is not valid JSON.
-                logging.warning(f"Invalid JSON received from {client_id}. Sending error.")
-                await websocket.send_json({"error": "Invalid JSON format"})
+            # Gebruik de generieke receive() om zowel tekst als bytes te kunnen ontvangen
+            message = await websocket.receive()
+
+            # Verwerk binaire data (de hoofd-pijplijn)
+            if "bytes" in message and message.get("bytes") is not None:
+                audio_chunk = message["bytes"]
+                logging.info(f"[{client_id}] Binaire audio-chunk ontvangen ({len(audio_chunk)} bytes).")
+
+                try:
+                    # --- Start Mock API Pijplijn ---
+                    text_result = await mock_speech_to_text(audio_chunk)
+                    translation_result = await mock_translation(text_result)
+                    output_audio = await mock_text_to_speech(translation_result)
+                    # --- Einde Pijplijn ---
+
+                    await websocket.send_bytes(output_audio)
+                    logging.info(f"[{client_id}] Vertaalde audio-chunk succesvol teruggestuurd.")
+
+                except Exception as e:
+                    # Vang fouten in de pijplijn netjes af zonder de verbinding te verbreken
+                    logging.error(f"[{client_id}] Fout tijdens verwerking pijplijn: {e}")
+                    # Stuur een fallback foutmelding terug naar de client
+                    await websocket.send_bytes(b"error_in_pipeline")
+
+            # Verwerk tekstdata (voor JSON echo en backward compatibility)
+            elif "text" in message and message.get("text") is not None:
+                text_data = message["text"]
+                logging.info(f"[{client_id}] Tekstdata ontvangen: {text_data}")
+                # De bestaande JSON echo-functionaliteit
+                json_data = json.loads(text_data)
+                await websocket.send_json(json_data)
+                logging.info(f"[{client_id}] JSON-data teruggekaatst naar client.")
 
     except WebSocketDisconnect:
-        logging.info(f"Client disconnected: {client_id}")
+        logging.info(f"Client {client_id} heeft de verbinding verbroken.")
     except Exception as e:
-        # --- Improvement: Catch-all for unexpected errors ---
-        # This ensures the server logs any other crashes within the connection.
-        logging.error(f"An unexpected error occurred with {client_id}: {e}")
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+        logging.error(f"[{client_id}] Onverwachte fout: {e}", exc_info=True)
+        if websocket.client_state != WebSocketState.DISCONNECTED:
+            await websocket.close(code=1011, reason="Interne serverfout")
