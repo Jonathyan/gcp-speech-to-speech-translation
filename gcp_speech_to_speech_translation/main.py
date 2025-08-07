@@ -1,13 +1,27 @@
 import logging
 import json
+import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
+from tenacity import retry, stop_after_attempt, wait_exponential, RetryError
+import pybreaker
 
 # Importeer de mock services vanuit hetzelfde package
 from .services import (
     mock_speech_to_text,
     mock_text_to_speech,
     mock_translation,
+)
+
+# Importeer de configuratie en resilience componenten
+from .config import settings
+from .resilience import circuit_breaker
+
+# Definieer de retry-decorator op basis van de configuratie
+pipeline_retry_decorator = retry(
+    stop=stop_after_attempt(settings.API_RETRY_ATTEMPTS),
+    wait=wait_exponential(multiplier=settings.API_RETRY_WAIT_MULTIPLIER_S),
+    reraise=True,  # Essentieel om de fout door te geven aan de circuit breaker
 )
 
 # Configureer logging
@@ -20,6 +34,21 @@ app = FastAPI(
     description="A FastAPI service for real-time speech-to-speech translation using WebSockets.",
     version="0.3.0",
 )
+
+@pipeline_retry_decorator
+async def process_pipeline(audio_chunk: bytes) -> bytes:
+    """
+    Verwerkt een audio-chunk door de volledige pijplijn.
+    De decorator handelt de retries af.
+    """
+    attempt_num = process_pipeline.retry.statistics.get('attempt_number', 1)
+    if attempt_num > 1:
+        logging.info(f"Pipeline-poging {attempt_num}...")
+
+    text_result = await mock_speech_to_text(audio_chunk)
+    translation_result = await mock_translation(text_result)
+    output_audio = await mock_text_to_speech(translation_result)
+    return output_audio
 
 
 @app.websocket("/ws")
@@ -34,8 +63,6 @@ async def websocket_endpoint(websocket: WebSocket):
         testen en backward compatibility.
     """
     await websocket.accept()
-    # De TestClient vult websocket.client niet altijd in.
-    # We bieden een fallback om AttributeError in tests te voorkomen.
     if websocket.client:
         client_id = f"{websocket.client.host}:{websocket.client.port}"
     else:
@@ -44,35 +71,47 @@ async def websocket_endpoint(websocket: WebSocket):
 
     try:
         while True:
-            # Gebruik de generieke receive() om zowel tekst als bytes te kunnen ontvangen
             message = await websocket.receive()
 
-            # Verwerk binaire data (de hoofd-pijplijn)
             if "bytes" in message and message.get("bytes") is not None:
                 audio_chunk = message["bytes"]
                 logging.info(f"[{client_id}] Binaire audio-chunk ontvangen ({len(audio_chunk)} bytes).")
 
                 try:
-                    # --- Start Mock API Pijplijn ---
-                    text_result = await mock_speech_to_text(audio_chunk)
-                    translation_result = await mock_translation(text_result)
-                    output_audio = await mock_text_to_speech(translation_result)
-                    # --- Einde Pijplijn ---
+                    # 1. Circuit Breaker Check
+                    if circuit_breaker.is_open:
+                        logging.warning(f"[{client_id}] Circuit breaker is open. Draaien in 'degraded mode'.")
+                        await websocket.send_bytes(settings.FALLBACK_AUDIO)
+                        continue
 
-                    await websocket.send_bytes(output_audio)
-                    logging.info(f"[{client_id}] Vertaalde audio-chunk succesvol teruggestuurd.")
+                    # 2. Pipeline Execution met Timeout
+                    async with asyncio.timeout(settings.PIPELINE_TIMEOUT_S):
+                        # 3. Roep de pijplijn aan, die retries en circuit breaking bevat
+                        output_audio = await circuit_breaker.call_async(process_pipeline, audio_chunk)
+                        await websocket.send_bytes(output_audio)
+                        logging.info(f"[{client_id}] Pijplijn succesvol. Vertaalde audio teruggestuurd.")
 
+                except asyncio.TimeoutError:
+                    logging.error(f"[{client_id}] Pijplijn-timeout na {settings.PIPELINE_TIMEOUT_S}s.")
+                    circuit_breaker.failure()  # Timeout telt als een fout voor de breaker
+                    await websocket.send_bytes(settings.FALLBACK_AUDIO)
+                except RetryError as e:
+                    # Wordt getriggerd als alle tenacity-retries falen.
+                    # De fout is al gelogd door de circuit breaker.
+                    logging.error(f"[{client_id}] Pijplijn definitief mislukt na {settings.API_RETRY_ATTEMPTS} pogingen. Laatste fout: {e.last_attempt.exception()}")
+                    await websocket.send_bytes(settings.FALLBACK_AUDIO)
+                except pybreaker.CircuitBreakerError:
+                    # Wordt getriggerd als de breaker al open was bij de aanroep.
+                    logging.warning(f"[{client_id}] Aanroep geblokkeerd door open circuit breaker.")
+                    await websocket.send_bytes(settings.FALLBACK_AUDIO)
                 except Exception as e:
-                    # Vang fouten in de pijplijn netjes af zonder de verbinding te verbreken
-                    logging.error(f"[{client_id}] Fout tijdens verwerking pijplijn: {e}")
-                    # Stuur een fallback foutmelding terug naar de client
-                    await websocket.send_bytes(b"error_in_pipeline")
+                    # Vangt alle andere onverwachte fouten op
+                    logging.critical(f"[{client_id}] Onverwachte fout in pijplijn-handler: {e}", exc_info=True)
+                    await websocket.send_bytes(settings.FALLBACK_AUDIO)
 
-            # Verwerk tekstdata (voor JSON echo en backward compatibility)
             elif "text" in message and message.get("text") is not None:
                 text_data = message["text"]
                 logging.info(f"[{client_id}] Tekstdata ontvangen: {text_data}")
-                # De bestaande JSON echo-functionaliteit
                 json_data = json.loads(text_data)
                 await websocket.send_json(json_data)
                 logging.info(f"[{client_id}] JSON-data teruggekaatst naar client.")
@@ -80,6 +119,6 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         logging.info(f"Client {client_id} heeft de verbinding verbroken.")
     except Exception as e:
-        logging.error(f"[{client_id}] Onverwachte fout: {e}", exc_info=True)
+        logging.error(f"[{client_id}] Onverwachte fout in WebSocket-loop: {e}", exc_info=True)
         if websocket.client_state != WebSocketState.DISCONNECTED:
             await websocket.close(code=1011, reason="Interne serverfout")

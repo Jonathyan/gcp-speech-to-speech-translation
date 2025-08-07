@@ -1,0 +1,30 @@
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class AppSettings(BaseSettings):
+    """
+    Beheert de applicatie-instellingen, laadbaar vanuit environment variables.
+    """
+
+    # Model-configuratie voor pydantic
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+    # Retry-instellingen
+    API_RETRY_ATTEMPTS: int = 3  # Totaal 3 pogingen (1 origineel + 2 retries)
+    API_RETRY_WAIT_MULTIPLIER_S: int = 1  # Wacht 1s, 2s, 4s, etc. tussen retries
+
+    # Timeout-instellingen
+    PIPELINE_TIMEOUT_S: float = 0.5  # 500ms
+
+    # Circuit Breaker-instellingen
+    CIRCUIT_BREAKER_FAIL_MAX: int = 5  # Na 5 opeenvolgende fouten opent de breaker
+    CIRCUIT_BREAKER_RESET_TIMEOUT_S: int = 30  # Probeer na 30s weer te sluiten
+
+    # Fallback-instellingen
+    FALLBACK_AUDIO: bytes = b"error_fallback_audio"
+
+
+# Maak een globale instantie die overal in de app kan worden geïmporteerd
+settings = AppSettings()

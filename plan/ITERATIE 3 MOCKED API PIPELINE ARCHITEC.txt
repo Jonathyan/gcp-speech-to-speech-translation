@@ -1,0 +1,125 @@
+ITERATIE 3: MOCKED API PIPELINE ARCHITECTURE
+                                   (Local Development)
+
+┌─────────────────────┐                                    ┌─────────────────────┐
+│   CLIENT BROWSER    │                                    │   FastAPI SERVER    │
+│                     │                                    │   (MacBook M1)      │
+│  ┌─────────────┐    │           WebSocket                │                     │
+│  │ JavaScript  │    │       ws://localhost:8000/ws       │   ┌─────────────┐   │
+│  │   app.js    │    │◄──────────────────────────────────►│   │    main.py  │   │
+│  │             │    │                                    │   │             │   │
+│  └─────────────┘    │                                    │   └─────────────┘   │
+│         │           │                                    │         │           │
+│    [Audio Chunk]    │                                    │    [Receive bytes]  │
+│   b'\x01\x02\x03'   │                                    │                     │
+└─────────────────────┘                                    └─────────────────────┘
+         │                                                             │
+         │ SEND: Binary audio chunk                                    │
+         └─────────────────────────────────────────────────────────────┤
+                                                                       ▼
+                                                   ┌────────────────────────────────┐
+                                                   │    PIPELINE PROCESSING         │
+                                                   │        (services.py)           │
+                                                   │                                │
+                                                   │  ┌─────────────────────────┐   │
+                                                   │  │   STEP 1: Mock STT      │   │
+                                                   │  │                         │   │
+                                                   │  │ mock_speech_to_text()   │   │
+                                                   │  │ ┌─────────────────────┐ │   │
+                                                   │  │ │ Input: audio_chunk  │ │   │
+                                                   │  │ │ Sleep: 50ms         │ │   │
+                                                   │  │ │ Output: "hallo"     │ │   │
+                                                   │  │ │ Error: 10% chance   │ │   │
+                                                   │  │ └─────────────────────┘ │   │
+                                                   │  └─────────────┬───────────┘   │
+                                                   │                ▼               │
+                                                   │  ┌─────────────────────────┐   │
+                                                   │  │   STEP 2: Mock Trans    │   │
+                                                   │  │                         │   │
+                                                   │  │ mock_translation()      │   │
+                                                   │  │ ┌─────────────────────┐ │   │
+                                                   │  │ │ Input: "hallo"      │ │   │
+                                                   │  │ │ Sleep: 50ms         │ │   │
+                                                   │  │ │ Output: "hello"     │ │   │
+                                                   │  │ │ Error: 5% chance    │ │   │
+                                                   │  │ └─────────────────────┘ │   │
+                                                   │  └─────────────┬───────────┘   │
+                                                   │                ▼               │
+                                                   │  ┌─────────────────────────┐   │
+                                                   │  │   STEP 3: Mock TTS      │   │
+                                                   │  │                         │   │
+                                                   │  │ mock_text_to_speech()   │   │
+                                                   │  │ ┌─────────────────────┐ │   │
+                                                   │  │ │ Input: "hello"      │ │   │
+                                                   │  │ │ Sleep: 50ms         │ │   │
+                                                   │  │ │ Output: b'mock_au..'│ │   │
+                                                   │  │ │ Error: 8% chance    │ │   │
+                                                   │  │ └─────────────────────┘ │   │
+                                                   │  └─────────────┬───────────┘   │
+                                                   │                │               │
+                                                   │   Total Time: ~150ms           │
+                                                   └────────────────┬───────────────┘
+                                                                    │
+┌─────────────────────┐                                             │
+│ ERROR HANDLING      │  ◄──────────────────────────────────────────┘
+│                     │
+│ ┌─────────────────┐ │   ┌─────────────────────────────────────────────────────────┐
+│ │ Retry Logic     │ │   │                    ERROR SCENARIOS                      │
+│ │ • Max 2 retries │ │   │                                                         │
+│ │ • Exponential   │ │   │  API Failure → Retry (0.1s, 0.2s) → Success/Fallback    │
+│ │   backoff       │ │   │                                                         │
+│ └─────────────────┘ │   │  Timeout (>500ms) → Return b'timeout_fallback'          │
+│                     │   │                                                         │
+│ ┌─────────────────┐ │   │  Circuit Breaker → 5 failures → Degraded Mode           │
+│ │ Circuit Breaker │ │   │                                                         │
+│ │ • Track failures│ │   │  Total Failure → Return b'error_fallback'               │
+│ │ • Open after 5  │ │   │                                                         │
+│ │ • Fallback mode │ │   └─────────────────────────────────────────────────────────┘
+│ └─────────────────┘ │
+│                     │
+│ ┌─────────────────┐ │
+│ │ Timeout Guard   │ │
+│ │ • 500ms limit   │ │
+│ │ • Graceful fail │ │
+│ └─────────────────┘ │
+└─────────────────────┘
+         │
+         │ SUCCESS PATH: Return translated audio
+         ▼
+┌─────────────────────┐                                    ┌─────────────────────┐
+│   CLIENT BROWSER    │                                    │   FastAPI SERVER    │
+│                     │◄───────────────────────────────────│                     │
+│  Response received: │        WebSocket Response          │ websocket.send_bytes│
+│ b'mock_audio_output'│                                    │ (translated_audio)  │
+│                     │                                    │                     │
+└─────────────────────┘                                    └─────────────────────┘
+
+         DATA FLOW TIMELINE:
+         ═══════════════════
+         
+    t=0ms    │ Client sends: b'\x01\x02\x03'
+             ▼
+    t=1ms    │ Server receives bytes
+             │ Pipeline starts
+             ▼
+   t=50ms    │ Mock STT completes: "hallo wereld"
+             ▼
+  t=100ms    │ Mock Translation completes: "hello world"  
+             ▼
+  t=150ms    │ Mock TTS completes: b'mock_audio_output'
+             ▼
+  t=152ms    │ Server sends response back to client
+             │ 
+             ▼ COMPLETE ✅
+
+    TESTING ARCHITECTURE:
+    ═══════════════════════
+    
+    ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
+    │    TEST CLIENT      │    │   PYTEST TESTS      │    │   MANUAL CLIENT     │
+    │                     │    │                     │    │                     │
+    │ • WebSocket mock    │    │ • test_iteration3   │    │ • test_client.py    │
+    │ • Send test data    │    │ • Timing validation │    │ • Real WebSocket    │
+    │ • Validate response │    │ • Error scenarios   │    │ • Debug tool        │
+    │ • Check timing      │    │ • Edge cases        │    │ • Performance test  │
+    └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
