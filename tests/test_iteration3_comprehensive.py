@@ -1,5 +1,15 @@
 import pytest
 import asyncio
+import pybreaker
+import sys
+
+# --- Diagnostische print-statements ---
+print("\n--- PYTEST DIAGNOSTICS ---")
+print(f"Python executable: {sys.executable}")
+print(f"Pybreaker module loaded from: {pybreaker.__file__}")
+print(f"Pybreaker version hint (dir): {dir(pybreaker.CircuitBreaker)}")
+print("--------------------------\n")
+
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -20,9 +30,9 @@ def reset_circuit_breaker_state():
     Zorgt ervoor dat de circuit breaker voor elke test wordt gereset.
     Dit is cruciaal voor test-isolatie, zodat falende tests elkaar niet beïnvloeden.
     """
-    circuit_breaker.reset()
+    circuit_breaker.close()
     yield
-    circuit_breaker.reset()
+    circuit_breaker.close()
 
 
 @pytest.fixture(scope="module")
@@ -73,7 +83,9 @@ class TestErrorAndResilienceScenarios:
         """
         Simuleert een initiële STT API-fout, gevolgd door een succesvolle retry.
         """
-        # De eerste `random` call faalt (STT), de tweede slaagt. De rest slaagt ook.
+        # De eerste `random` call in de pijplijn (mock_speech_to_text) faalt.
+        # Bij de retry-poging slagen alle drie de calls.
+        # Dit maakt de intentie van de test duidelijker.
         error_then_success = [0.05, 0.9, 0.9, 0.9]
         with patch('gcp_speech_to_speech_translation.services.random.random', side_effect=error_then_success):
             with test_client.websocket_connect("/ws") as websocket:
@@ -81,6 +93,20 @@ class TestErrorAndResilienceScenarios:
                 response_audio = websocket.receive_bytes()
 
                 assert response_audio == b'mock_english_audio_output'
+
+    async def test_translation_failure_triggers_fallback(self, test_client, fast_retry_settings):
+        """
+        Simuleert een specifieke, aanhoudende fout in de vertaalstap.
+        """
+        # De STT-stap slaagt, maar de Translation-stap faalt consequent.
+        stt_success_translation_fail = [0.9, 0.05, 0.05, 0.05]
+        with patch('gcp_speech_to_speech_translation.services.random.random', side_effect=stt_success_translation_fail):
+            with test_client.websocket_connect("/ws") as websocket:
+                websocket.send_bytes(b'test_translation_fail')
+                response_audio = websocket.receive_bytes()
+
+                # Verwacht de fallback omdat de pijplijn nooit slaagt.
+                assert response_audio == settings.FALLBACK_AUDIO
 
     async def test_persistent_failure_triggers_fallback(self, test_client, fast_retry_settings):
         """
@@ -100,7 +126,7 @@ class TestErrorAndResilienceScenarios:
         Valideert dat de circuit breaker opent na N opeenvolgende fouten
         en daarna onmiddellijk een fallback-respons geeft ('fail-fast').
         """
-        assert circuit_breaker.is_closed
+        assert circuit_breaker.current_state == "closed"
 
         with patch('gcp_speech_to_speech_translation.services.random.random', return_value=0.01):  # Altijd falen
             with test_client.websocket_connect("/ws") as websocket:
@@ -110,7 +136,7 @@ class TestErrorAndResilienceScenarios:
                     response = websocket.receive_bytes()
                     assert response == settings.FALLBACK_AUDIO
 
-                assert circuit_breaker.is_open, "Circuit breaker had open moeten zijn"
+                assert circuit_breaker.current_state == "open", "Circuit breaker had open moeten zijn"
 
                 # Nu de breaker open is, moet de respons onmiddellijk zijn.
                 start_time = asyncio.get_event_loop().time()
@@ -142,3 +168,38 @@ class TestPerformanceAndEdgeCases:
                 websocket.send_bytes(large_chunk)
                 response = websocket.receive_bytes()
                 assert response == b'mock_english_audio_output'
+
+
+class TestConcurrencyAndMalformedData:
+    """Test de serverstabiliteit onder druk en met ongeldige data."""
+
+    async def test_concurrent_requests_are_handled(self, test_client):
+        """
+        Valideert dat de server meerdere gelijktijdige verzoeken correct kan verwerken.
+        """
+        num_concurrent_requests = 10
+
+        async def send_and_receive(index):
+            with test_client.websocket_connect("/ws") as websocket:
+                websocket.send_bytes(f"concurrent_{index}".encode())
+                response = websocket.receive_bytes()
+                assert response == b'mock_english_audio_output'
+
+        # Patch random om altijd te slagen voor deze test
+        with patch('gcp_speech_to_speech_translation.services.random.random', return_value=1.0):
+            tasks = [send_and_receive(i) for i in range(num_concurrent_requests)]
+            await asyncio.gather(*tasks)
+
+    async def test_malformed_text_data_does_not_crash_server(self, test_client):
+        """
+        Valideert dat het sturen van een niet-JSON-tekstbericht de verbinding
+        of de server niet laat crashen.
+        """
+        with test_client.websocket_connect("/ws") as websocket:
+            # Stuur een tekstbericht dat geen geldig JSON is.
+            websocket.send_text("this is not json")
+            # De server zou de fout moeten loggen en de verbinding open moeten houden.
+            # We controleren dit door een geldig bericht te sturen en een antwoord te verwachten.
+            websocket.send_json({"echo": "still alive"})
+            response = websocket.receive_json()
+            assert response == {"echo": "still alive"}

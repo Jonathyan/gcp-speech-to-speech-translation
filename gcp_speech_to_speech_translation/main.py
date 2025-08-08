@@ -79,21 +79,27 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 try:
                     # 1. Circuit Breaker Check
-                    if circuit_breaker.is_open:
+                    if circuit_breaker.current_state == "open":
                         logging.warning(f"[{client_id}] Circuit breaker is open. Draaien in 'degraded mode'.")
                         await websocket.send_bytes(settings.FALLBACK_AUDIO)
                         continue
 
                     # 2. Pipeline Execution met Timeout
                     async with asyncio.timeout(settings.PIPELINE_TIMEOUT_S):
-                        # 3. Roep de pijplijn aan, die retries en circuit breaking bevat
-                        output_audio = await circuit_breaker.call_async(process_pipeline, audio_chunk)
-                        await websocket.send_bytes(output_audio)
-                        logging.info(f"[{client_id}] Pijplijn succesvol. Vertaalde audio teruggestuurd.")
+                        # 3. Handmatige circuit breaker logica om de problematische
+                        #    call_async te vermijden.
+                        try:
+                            output_audio = await process_pipeline(audio_chunk)
+                            circuit_breaker.success() # Correct API call for success
+                            await websocket.send_bytes(output_audio)
+                            logging.info(f"[{client_id}] Pijplijn succesvol. Vertaalde audio teruggestuurd.")
+                        except Exception as pipeline_error:
+                            circuit_breaker.fail() # Correct API call for failure
+                            raise pipeline_error # Geef de fout door aan de buitenste handlers
 
                 except asyncio.TimeoutError:
                     logging.error(f"[{client_id}] Pijplijn-timeout na {settings.PIPELINE_TIMEOUT_S}s.")
-                    circuit_breaker.failure()  # Timeout telt als een fout voor de breaker
+                    circuit_breaker.fail()  # Correct API call for failure
                     await websocket.send_bytes(settings.FALLBACK_AUDIO)
                 except RetryError as e:
                     # Wordt getriggerd als alle tenacity-retries falen.
@@ -112,9 +118,14 @@ async def websocket_endpoint(websocket: WebSocket):
             elif "text" in message and message.get("text") is not None:
                 text_data = message["text"]
                 logging.info(f"[{client_id}] Tekstdata ontvangen: {text_data}")
-                json_data = json.loads(text_data)
-                await websocket.send_json(json_data)
-                logging.info(f"[{client_id}] JSON-data teruggekaatst naar client.")
+                # Vang specifiek JSON-decodeerfouten af zonder de verbinding te verbreken.
+                try:
+                    json_data = json.loads(text_data)
+                    await websocket.send_json(json_data)
+                    logging.info(f"[{client_id}] JSON-data teruggekaatst naar client.")
+                except json.JSONDecodeError:
+                    logging.warning(f"[{client_id}] Ongeldige JSON ontvangen: {text_data}")
+                    # Stuur geen antwoord, maar houd de verbinding open.
 
     except WebSocketDisconnect:
         logging.info(f"Client {client_id} heeft de verbinding verbroken.")
