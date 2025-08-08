@@ -16,7 +16,7 @@ class AppSettings(BaseSettings):
     API_RETRY_WAIT_MULTIPLIER_S: int = 1  # Wacht 1s, 2s, 4s, etc. tussen retries
 
     # Timeout-instellingen
-    PIPELINE_TIMEOUT_S: float = 0.5  # 500ms
+    PIPELINE_TIMEOUT_S: float = 2.0  # 2000ms for retries to work
 
     # Circuit Breaker-instellingen
     CIRCUIT_BREAKER_FAIL_MAX: int = 5  # Na 5 opeenvolgende fouten opent de breaker

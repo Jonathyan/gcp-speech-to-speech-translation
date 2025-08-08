@@ -1,0 +1,27 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.4, pytest-8.4.1, pluggy-1.6.0 -- /Users/jonathyan/Library/Caches/pypoetry/virtualenvs/gcp-speech-to-speech-translation-rPQUsCJf-py3.13/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/jonathyan/tech/lfhs-translate/gcp_s2t2st/gcp-speech-to-speech-translation
+configfile: pyproject.toml
+plugins: asyncio-0.23.8, anyio-4.10.0
+asyncio: mode=Mode.STRICT
+collecting ... 
+--- PYTEST DIAGNOSTICS ---
+Python executable: /Users/jonathyan/Library/Caches/pypoetry/virtualenvs/gcp-speech-to-speech-translation-rPQUsCJf-py3.13/bin/python
+Pybreaker module loaded from: /Users/jonathyan/Library/Caches/pypoetry/virtualenvs/gcp-speech-to-speech-translation-rPQUsCJf-py3.13/lib/python3.13/site-packages/pybreaker/__init__.py
+Pybreaker version hint (dir): ['__call__', '__class__', '__delattr__', '__dict__', '__dir__', '__doc__', '__eq__', '__firstlineno__', '__format__', '__ge__', '__getattribute__', '__getstate__', '__gt__', '__hash__', '__init__', '__init_subclass__', '__le__', '__lt__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__sizeof__', '__static_attributes__', '__str__', '__subclasshook__', '__weakref__', '_create_new_state', '_inc_counter', 'add_excluded_exception', 'add_excluded_exceptions', 'add_listener', 'add_listeners', 'call', 'call_async', 'calling', 'close', 'current_state', 'excluded_exceptions', 'fail_counter', 'fail_max', 'half_open', 'is_system_error', 'listeners', 'name', 'open', 'remove_excluded_exception', 'remove_listener', 'reset_timeout', 'state', 'success_counter', 'success_threshold']
+--------------------------
+
+collected 9 items
+
+tests/test_iteration3_comprehensive.py::TestHappyPath::test_successful_pipeline PASSED
+tests/test_iteration3_comprehensive.py::TestErrorAndResilienceScenarios::test_stt_failure_with_successful_retry PASSED
+tests/test_iteration3_comprehensive.py::TestErrorAndResilienceScenarios::test_translation_failure_triggers_fallback PASSED
+tests/test_iteration3_comprehensive.py::TestErrorAndResilienceScenarios::test_persistent_failure_triggers_fallback PASSED
+tests/test_iteration3_comprehensive.py::TestErrorAndResilienceScenarios::test_circuit_breaker_opens_and_fails_fast PASSED
+tests/test_iteration3_comprehensive.py::TestPerformanceAndEdgeCases::test_empty_audio_chunk_is_handled PASSED
+tests/test_iteration3_comprehensive.py::TestPerformanceAndEdgeCases::test_large_audio_chunk_is_handled PASSED
+tests/test_iteration3_comprehensive.py::TestConcurrencyAndMalformedData::test_concurrent_requests_are_handled PASSED
+tests/test_iteration3_comprehensive.py::TestConcurrencyAndMalformedData::test_malformed_text_data_does_not_crash_server PASSED
+
+============================== 9 passed in 24.57s ==============================

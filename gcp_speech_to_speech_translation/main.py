@@ -85,34 +85,35 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
 
                     # 2. Pipeline Execution met Timeout
-                    async with asyncio.timeout(settings.PIPELINE_TIMEOUT_S):
-                        # 3. Handmatige circuit breaker logica om de problematische
-                        #    call_async te vermijden.
-                        try:
+                    try:
+                        async with asyncio.timeout(settings.PIPELINE_TIMEOUT_S):
                             output_audio = await process_pipeline(audio_chunk)
-                            circuit_breaker.success() # Correct API call for success
                             await websocket.send_bytes(output_audio)
                             logging.info(f"[{client_id}] Pijplijn succesvol. Vertaalde audio teruggestuurd.")
-                        except Exception as pipeline_error:
-                            circuit_breaker.fail() # Correct API call for failure
-                            raise pipeline_error # Geef de fout door aan de buitenste handlers
+                    except asyncio.TimeoutError:
+                        logging.error(f"[{client_id}] Pijplijn-timeout na {settings.PIPELINE_TIMEOUT_S}s.")
+                        # Manually trigger circuit breaker failure
+                        try:
+                            circuit_breaker.call(lambda: None)
+                        except:
+                            pass
+                        await websocket.send_bytes(settings.FALLBACK_AUDIO)
 
-                except asyncio.TimeoutError:
-                    logging.error(f"[{client_id}] Pijplijn-timeout na {settings.PIPELINE_TIMEOUT_S}s.")
-                    circuit_breaker.fail()  # Correct API call for failure
-                    await websocket.send_bytes(settings.FALLBACK_AUDIO)
-                except RetryError as e:
-                    # Wordt getriggerd als alle tenacity-retries falen.
-                    # De fout is al gelogd door de circuit breaker.
-                    logging.error(f"[{client_id}] Pijplijn definitief mislukt na {settings.API_RETRY_ATTEMPTS} pogingen. Laatste fout: {e.last_attempt.exception()}")
-                    await websocket.send_bytes(settings.FALLBACK_AUDIO)
-                except pybreaker.CircuitBreakerError:
-                    # Wordt getriggerd als de breaker al open was bij de aanroep.
-                    logging.warning(f"[{client_id}] Aanroep geblokkeerd door open circuit breaker.")
-                    await websocket.send_bytes(settings.FALLBACK_AUDIO)
-                except Exception as e:
-                    # Vangt alle andere onverwachte fouten op
-                    logging.critical(f"[{client_id}] Onverwachte fout in pijplijn-handler: {e}", exc_info=True)
+                except (RetryError, pybreaker.CircuitBreakerError, Exception) as e:
+                    # Alle fouten leiden tot fallback audio
+                    # Manually trigger circuit breaker failure for non-CircuitBreakerError exceptions
+                    if not isinstance(e, pybreaker.CircuitBreakerError):
+                        try:
+                            circuit_breaker.call(lambda: (_ for _ in ()).throw(Exception("Pipeline failed")))
+                        except:
+                            pass
+                    
+                    if isinstance(e, RetryError):
+                        logging.error(f"[{client_id}] Pijplijn definitief mislukt na {settings.API_RETRY_ATTEMPTS} pogingen.")
+                    elif isinstance(e, pybreaker.CircuitBreakerError):
+                        logging.warning(f"[{client_id}] Aanroep geblokkeerd door open circuit breaker.")
+                    else:
+                        logging.critical(f"[{client_id}] Onverwachte fout in pijplijn-handler: {e}", exc_info=True)
                     await websocket.send_bytes(settings.FALLBACK_AUDIO)
 
             elif "text" in message and message.get("text") is not None:

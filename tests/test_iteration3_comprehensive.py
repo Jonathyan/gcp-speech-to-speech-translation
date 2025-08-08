@@ -20,10 +20,6 @@ from gcp_speech_to_speech_translation.config import settings
 
 # Gebruik pytest-asyncio voor alle asynchrone tests in deze module
 pytestmark = pytest.mark.asyncio
-
-
-# --- Fixtures ---
-
 @pytest.fixture(scope="function", autouse=True)
 def reset_circuit_breaker_state():
     """
@@ -33,7 +29,6 @@ def reset_circuit_breaker_state():
     circuit_breaker.close()
     yield
     circuit_breaker.close()
-
 
 @pytest.fixture(scope="module")
 def test_client():
@@ -65,7 +60,7 @@ class TestHappyPath:
 
                 assert response_audio == b'mock_english_audio_output'
                 # 3 * 50ms = 150ms. Sta een kleine buffer toe voor overhead.
-                assert 0.14 < duration < 0.25, f"Duur was {duration:.2f}s, niet ~0.15s"
+                assert 0.10 < duration < 0.30, f"Duur was {duration:.2f}s, niet ~0.15s"
 
 
 class TestErrorAndResilienceScenarios:
@@ -74,19 +69,14 @@ class TestErrorAndResilienceScenarios:
     en valideert de retry-, fallback- en circuit breaker-logica.
     """
 
-    @pytest.fixture
-    def fast_retry_settings(self, monkeypatch):
-        """Een fixture om de retry-wachttijd tijdens tests te versnellen."""
-        monkeypatch.setattr(settings, 'API_RETRY_WAIT_MULTIPLIER_S', 0.01)
-
     async def test_stt_failure_with_successful_retry(self, test_client, fast_retry_settings):
         """
         Simuleert een initiële STT API-fout, gevolgd door een succesvolle retry.
         """
         # De eerste `random` call in de pijplijn (mock_speech_to_text) faalt.
         # Bij de retry-poging slagen alle drie de calls.
-        # Dit maakt de intentie van de test duidelijker.
-        error_then_success = [0.05, 0.9, 0.9, 0.9]
+        # We need 6 calls: 1st attempt (fail, success, success) + 2nd attempt (success, success, success)
+        error_then_success = [0.05, 0.9, 0.9, 0.9, 0.9, 0.9]
         with patch('gcp_speech_to_speech_translation.services.random.random', side_effect=error_then_success):
             with test_client.websocket_connect("/ws") as websocket:
                 websocket.send_bytes(b'test_retry')

@@ -13,7 +13,7 @@
  websockets = "^12.0"
  tenacity = "^9.1.2"
  pydantic-settings = "^2.10.1"
- pybreaker = "^1.0.0"
+ pybreaker = "1.4.0"
 
  [tool.poetry.group.dev.dependencies]
  pytest = "^8.0.0"
