@@ -11,6 +11,8 @@ The development follows a strict Test-Driven Development (TDD) approach, with ea
 *   **Testing:** `pytest` and `pytest-asyncio`.
 *   **Dependency Management:** Poetry.
 
+![Alt tekst](gcp-arch.png "Solution Architecture in GCP")
+
 ## Project Status
 
 ### Completed
@@ -38,12 +40,68 @@ The development follows a strict Test-Driven Development (TDD) approach, with ea
     *   **Graceful Fallback:** Fallback audio for all failure scenarios
 *   ✅ **Comprehensive test coverage:** 12 tests including happy path, error scenarios, performance, concurrency
 
-### Next Steps
 **Iteration 4: Google Cloud Speech-to-Text Integration**
 
-*   Replace the `mock_speech_to_text` service with real Google Cloud Speech-to-Text API integration.
-*   Maintain existing resilience patterns during real API integration.
-*   Focus on streaming audio from the client to the GCP API and receiving transcriptions back.
+*   ✅ **Production-ready STT implementation** with Google Cloud Speech-to-Text API
+*   ✅ **Streaming support** with optimized `latest_short` model for real-time performance
+*   ✅ **Environment configuration** - Sample rate, language code, timeout via env vars
+*   ✅ **Robust error handling** - Specific Google API exceptions and retry logic
+*   ✅ **Health check endpoint** - `GET /health/speech` for service monitoring
+*   ✅ **Service account authentication** - Secure credential management
+*   ✅ **Backwards compatibility** - All existing resilience patterns maintained
+
+### Next Steps
+## Current Architecture
+
+```
+┌─────────────────┐    WebSocket     ┌─────────────────────────────────┐
+│   Client        │ ◄──────────────► │   FastAPI Server               │
+│   (Browser)     │   Binary Audio   │   - WebSocket Handler (/ws)    │
+└─────────────────┘                  │   - Health Check (/health)     │
+                                     └─────────────────────────────────┘
+                                                      │
+                                                      ▼
+                                     ┌─────────────────────────────────┐
+                                     │   Audio Processing Pipeline     │
+                                     │                                 │
+                                     │  ┌─────────────────────────┐    │
+                                     │  │ 1. Speech-to-Text       │    │
+                                     │  │    Google Cloud API     │    │
+                                     │  │    - Streaming support  │    │
+                                     │  │    - Dutch language     │    │
+                                     │  └─────────────────────────┘    │
+                                     │              │                  │
+                                     │              ▼                  │
+                                     │  ┌─────────────────────────┐    │
+                                     │  │ 2. Translation          │    │
+                                     │  │    Mock Service         │    │
+                                     │  │    (Dutch → English)    │    │
+                                     │  └─────────────────────────┘    │
+                                     │              │                  │
+                                     │              ▼                  │
+                                     │  ┌─────────────────────────┐    │
+                                     │  │ 3. Text-to-Speech       │    │
+                                     │  │    Mock Service         │    │
+                                     │  │    (English Audio)      │    │
+                                     │  └─────────────────────────┘    │
+                                     └─────────────────────────────────┘
+                                                      │
+                                                      ▼
+                                     ┌─────────────────────────────────┐
+                                     │   Resilience Layer              │
+                                     │   - Retry Logic (3x)            │
+                                     │   - Circuit Breaker (5 fails)   │
+                                     │   - Timeout Protection (2s)     │
+                                     │   - Graceful Fallback Audio     │
+                                     └─────────────────────────────────┘
+```
+
+### Next Steps
+**Iteration 5: Google Cloud Translation Integration**
+
+*   Replace `mock_translation` with real Google Cloud Translation API
+*   Maintain existing resilience patterns and STT integration
+*   Add language detection and multi-language support
 
 ## Development
 
