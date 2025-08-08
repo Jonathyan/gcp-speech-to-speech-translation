@@ -25,6 +25,18 @@ async def mock_speech_to_text(audio_chunk: bytes) -> str:
     return result
 
 
+async def pass_through_speech_to_text(audio_chunk: bytes) -> str:
+    """
+    Pass-through STT functie voor isolatie testing.
+    Simuleert succesvolle STT zonder echte API call.
+    """
+    logging.info("STT: Pass-through mode - hardcoded result")
+    await asyncio.sleep(0.05)  # Behoud timing consistency
+    result = "hallo wereld"
+    logging.info(f"STT: Pass-through voltooid. Resultaat: '{result}'")
+    return result
+
+
 async def mock_translation(text: str) -> str:
     """
     Simuleert een Translation API-aanroep.
