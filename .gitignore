@@ -21,7 +21,10 @@ poetry.lock
 .coverage
 htmlcov/
 .tox/
-tests/fixtures/   
+tests/fixtures/*.wav
+tests/fixtures/*.m4a
+tests/fixtures/*.mp3
+
 
 # IDE
 .vscode/
