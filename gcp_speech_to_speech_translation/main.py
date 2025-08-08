@@ -1,14 +1,16 @@
 import logging
 import json
 import asyncio
+import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 from tenacity import retry, stop_after_attempt, wait_exponential, RetryError
 import pybreaker
+from google.cloud import speech
 
 # Importeer de mock services vanuit hetzelfde package
 from .services import (
-    mock_speech_to_text,
+    real_speech_to_text,
     mock_text_to_speech,
     mock_translation,
 )
@@ -35,6 +37,32 @@ app = FastAPI(
     version="0.3.0",
 )
 
+# Initialize Google Cloud Speech client
+speech_client = None
+
+@app.on_event("startup")
+async def startup_event():
+    global speech_client
+    try:
+        # Load credentials from environment variable
+        credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        if credentials_path:
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
+        
+        speech_client = speech.SpeechClient()
+        logging.info("Google Cloud Speech client initialized successfully")
+    except Exception as e:
+        logging.error(f"Failed to initialize Google Cloud Speech client: {e}")
+        speech_client = None
+
+@app.get("/health/speech")
+async def health_speech():
+    """Health check endpoint for Google Cloud Speech-to-Text service."""
+    if speech_client is not None:
+        return {"status": "ok", "speech_client": "connected"}
+    else:
+        return {"status": "error", "speech_client": "disconnected"}
+
 @pipeline_retry_decorator
 async def process_pipeline(audio_chunk: bytes) -> bytes:
     """
@@ -45,7 +73,7 @@ async def process_pipeline(audio_chunk: bytes) -> bytes:
     if attempt_num > 1:
         logging.info(f"Pipeline-poging {attempt_num}...")
 
-    text_result = await mock_speech_to_text(audio_chunk)
+    text_result = await real_speech_to_text(audio_chunk)
     translation_result = await mock_translation(text_result)
     output_audio = await mock_text_to_speech(translation_result)
     return output_audio

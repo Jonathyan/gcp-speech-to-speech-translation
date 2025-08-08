@@ -47,8 +47,12 @@ class TestHappyPath:
         Test de volledige pijplijn met een geldige audio-chunk, en verwacht
         een succesvolle vertaling en correcte timing.
         """
-        # Patch random.random om altijd een waarde te retourneren die geen fout veroorzaakt.
-        with patch('gcp_speech_to_speech_translation.services.random.random', return_value=1.0):
+        # Patch random.random en gebruik mock STT voor deze test
+        with patch('gcp_speech_to_speech_translation.services.random.random', return_value=1.0), \
+             patch('gcp_speech_to_speech_translation.main.real_speech_to_text') as mock_stt:
+            
+            from gcp_speech_to_speech_translation.services import mock_speech_to_text
+            mock_stt.side_effect = mock_speech_to_text
             with test_client.websocket_connect("/ws") as websocket:
                 start_time = asyncio.get_event_loop().time()
 

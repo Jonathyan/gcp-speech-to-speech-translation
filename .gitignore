@@ -43,6 +43,9 @@ test_output.log
 !pyproject.toml
 service-account-*.json
 gcp-credentials.json
+credentials/
+credentials/service-account.json
+
 
 # Build artifacts
 build/

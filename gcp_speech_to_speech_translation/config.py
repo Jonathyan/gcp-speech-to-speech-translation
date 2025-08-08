@@ -17,6 +17,11 @@ class AppSettings(BaseSettings):
 
     # Timeout-instellingen
     PIPELINE_TIMEOUT_S: float = 2.0  # 2000ms for retries to work
+    
+    # Speech-to-Text configuratie
+    STT_SAMPLE_RATE: int = 16000
+    STT_LANGUAGE_CODE: str = "nl-NL"
+    STT_TIMEOUT_S: float = 10.0
 
     # Circuit Breaker-instellingen
     CIRCUIT_BREAKER_FAIL_MAX: int = 5  # Na 5 opeenvolgende fouten opent de breaker

@@ -37,6 +37,76 @@ async def pass_through_speech_to_text(audio_chunk: bytes) -> str:
     return result
 
 
+async def real_speech_to_text(audio_chunk: bytes) -> str:
+    """
+    Production-ready Google Cloud Speech-to-Text API met streaming support.
+    """
+    import os
+    from google.cloud import speech
+    from google.api_core import exceptions as gcp_exceptions
+    from tenacity import retry, stop_after_attempt, wait_exponential
+    
+    # Configuratie via environment variables
+    sample_rate = int(os.getenv('STT_SAMPLE_RATE', '16000'))
+    language_code = os.getenv('STT_LANGUAGE_CODE', 'nl-NL')
+    timeout_seconds = float(os.getenv('STT_TIMEOUT_S', '10.0'))
+    
+    logging.info(f"STT: Real API call - {len(audio_chunk)} bytes, {language_code}")
+    
+    @retry(
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=0.5, max=2),
+        reraise=True
+    )
+    async def _recognize_with_retry():
+        try:
+            client = speech.SpeechClient()
+            
+            # Optimized config voor streaming performance
+            config = speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+                sample_rate_hertz=sample_rate,
+                language_code=language_code,
+                enable_automatic_punctuation=True,
+                model="latest_short",
+            )
+            
+            audio = speech.RecognitionAudio(content=audio_chunk)
+            
+            # Synchronous recognize met timeout
+            import asyncio
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None, 
+                lambda: client.recognize(
+                    config=config, 
+                    audio=audio,
+                    timeout=timeout_seconds
+                )
+            )
+            
+            if response.results and response.results[0].alternatives:
+                transcript = response.results[0].alternatives[0].transcript.strip()
+                confidence = response.results[0].alternatives[0].confidence
+                logging.info(f"STT: Success - '{transcript}' (confidence: {confidence:.2f})")
+                return transcript
+            else:
+                raise Exception("No transcription results")
+                
+        except gcp_exceptions.GoogleAPIError as e:
+            logging.error(f"STT: Google API error - {e}")
+            raise Exception(f"Google Cloud STT API Error: {e}")
+        except Exception as e:
+            logging.error(f"STT: Unexpected error - {e}")
+            raise Exception(f"STT Error: {e}")
+    
+    try:
+        return await _recognize_with_retry()
+    except Exception as e:
+        logging.error(f"STT: Final failure after retries - {e}")
+        raise
+
+
 async def mock_translation(text: str) -> str:
     """
     Simuleert een Translation API-aanroep.
