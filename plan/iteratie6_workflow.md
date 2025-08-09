@@ -1,418 +1,236 @@
-# Iteratie 6: Google Text-to-Speech API Integration - Micro Steps
+# Iteratie 6: Google Text-to-Speech API Integration - Micro-Steps (Instructies Only)
 
-## Voorbereiding voor LLM Agent
-
-### Step 0: Context Setup
-**Prompt voor LLM:**
-```
-Je gaat Iteratie 6 implementeren: integratie van Google Cloud Text-to-Speech API.
-
-HUIDIGE STATUS NA ITERATIE 5:
-- ✅ Real STT → Real Translation → Mock TTS pipeline
-- ✅ All resilience patterns working
-- ✅ Health checks for STT and Translation
-
-GOAL: Replace `mock_text_to_speech` with `real_text_to_speech` using Google Cloud TTS API
-
-KEY CONSIDERATIONS:
-- TTS returns binary audio data (different from text-based APIs)
-- Need proper audio format configuration (MP3/WAV/LINEAR16)
-- Audio encoding/sample rate must match client expectations
-- Larger response payloads than STT/Translation
-```
+## Overzicht Transformatie
+**VAN:** Real STT → Real Translation → Mock TTS  
+**NAAR:** Real STT → Real Translation → Real TTS
 
 ---
 
-## Micro-Iteratie 6A: Test-First Development  
+## Micro-Iteratie 6A: Test-First Development
 
-### Step 6A.1: Create Test for Real TTS
-**Prompt voor LLM:**
-```
-MICRO-STEP 6A.1: Create failing test for real TTS API
+### Step 6A.1: Create Failing Test for Real TTS
+**Wat moet de LLM doen:**
+- Maak nieuw testbestand: `tests/test_real_tts_integration.py`
+- Schrijf test die `real_text_to_speech("hello world")` aanroept
+- Test moet controleren dat resultaat bytes is (audio data)
+- Verifieer dat audio niet leeg is en redelijke grootte heeft (>1000 bytes, <1MB)
+- Test moet skippen als geen GCP credentials aanwezig
+- Test moet FALEN omdat `real_text_to_speech` functie nog niet bestaat
+- Voeg edge case tests toe (lege string, lange tekst, special characters)
+- Optioneel: valideer audio format headers (MP3/WAV signatures)
 
-Create: `tests/test_real_tts_integration.py`
-
-REQUIREMENTS:
-1. Test function: `test_real_tts_with_english_text()`
-2. Skip test if no credentials
-3. Call real_text_to_speech("hello world") directly  
-4. Assert result is bytes, not empty, reasonable size (>1000 bytes)
-5. Optionally validate audio format headers
-
-EXAMPLE STRUCTURE:
-```python
-def test_real_tts_with_english_text():
-    if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
-        pytest.skip("No GCP credentials")
-    
-    result = await real_text_to_speech("hello world")
-    
-    # Basic validations
-    assert isinstance(result, bytes)
-    assert len(result) > 1000  # Audio should be substantial
-    assert len(result) < 1000000  # But not unreasonably large
-    
-    # Optional: Check for MP3 header if using MP3 format
-    # assert result[:3] == b'ID3' or result[:2] == b'\xff\xfb'
-```
-
-Run test to confirm failure, then proceed.
-```
+**Verwacht resultaat:** Test faalt met ImportError of "function not found"
 
 ### Step 6A.2: Add TTS Dependencies
-**Prompt voor LLM:**
-```
-MICRO-STEP 6A.2: Add Google TTS API dependency
+**Wat moet de LLM doen:**
+- Voeg `google-cloud-texttospeech` toe aan project dependencies via Poetry
+- Installeer de dependency
+- Verifieer installatie door import test uit te voeren
+- Controleer dat vereiste methoden en classes beschikbaar zijn
+- Test dat TTS client interface werkt (zonder credentials)
+- Verifieer dependency correct toegevoegd aan `pyproject.toml`
 
-Add to pyproject.toml:
-```toml
-google-cloud-texttospeech = "^2.16.0"
-```
-
-Run: `poetry install`
-
-Verify:
-```python
-from google.cloud import texttospeech
-print("✅ TTS library installed")
-```
-```
+**Verwacht resultaat:** TTS library geïnstalleerd en importeerbaar
 
 ---
 
 ## Micro-Iteratie 6B: Implementation
 
-### Step 6B.1: Create Real TTS Function
-**Prompt voor LLM:**
-```
-MICRO-STEP 6B.1: Implement real_text_to_speech function
+### Step 6B.1: Add TTS Configuration
+**Wat moet de LLM doen:**
+- Voeg TTS configuratie toe aan `AppSettings` klasse in `config.py`
+- Voeg velden toe voor: language code, voice name, voice gender, audio format, timeout
+- Stel production-ready defaults in (en-US, Wavenet voice, MP3 format)
+- Overweeg different voice options (Standard vs Wavenet vs Neural2)
+- Overweeg audio formats (MP3 voor web, LINEAR16 voor kwaliteit, OGG_OPUS voor compressie)
+- Verifieer dat configuratie correct geladen wordt via environment variables
 
-Add to services.py:
+**Verwacht resultaat:** TTS configuratie beschikbaar en aanpasbaar
 
-REQUIREMENTS:
-1. Function: `async def real_text_to_speech(text: str) -> bytes`
-2. Use Google Cloud TTS API
-3. Configure voice (language: en-US, name: en-US-Wavenet-D)
-4. Audio format: MP3 (good compression for web)
-5. Include retry logic and error handling
-6. Environment configuration for voice/format
-7. Proper logging
+### Step 6B.2: Implement real_text_to_speech Function
+**Wat moet de LLM doen:**
+- Implementeer `real_text_to_speech` functie in `services.py`
+- Volg zelfde pattern als bestaande `real_speech_to_text` en `real_translation`
+- Gebruik Google Cloud Text-to-Speech API
+- Implementeer retry logic met exponential backoff
+- Voeg proper error handling toe voor Google API errors
+- Gebruik async executor pattern voor API calls
+- Configureer voice parameters (language, name, gender)
+- Configureer audio output format en encoding
+- Voeg uitgebreide logging toe (inclusief audio size metrics)
+- Handle verschillende text lengtes en potentiële rate limits
 
-VOICE CONSIDERATIONS:
-- Wavenet voices: higher quality, more expensive
-- Standard voices: good quality, cheaper
-- Gender options: MALE, FEMALE, NEUTRAL
-
-AUDIO FORMATS:
-- MP3: Good compression, web-friendly
-- LINEAR16: Uncompressed, larger files
-- OGG_OPUS: Good compression, modern browsers
-
-EXAMPLE CONFIG:
-```python
-# TTS configuratie
-TTS_LANGUAGE_CODE: str = "en-US"
-TTS_VOICE_NAME: str = "en-US-Wavenet-D"  
-TTS_VOICE_GENDER: str = "NEUTRAL"
-TTS_AUDIO_FORMAT: str = "MP3"
-TTS_TIMEOUT_S: float = 15.0
-```
-```
-
-### Step 6B.2: Update Config for TTS
-**Prompt voor LLM:**
-```
-MICRO-STEP 6B.2: Add TTS config to config.py
-
-Add to AppSettings class:
-
-```python
-# Text-to-Speech configuratie
-TTS_LANGUAGE_CODE: str = "en-US"
-TTS_VOICE_NAME: str = "en-US-Wavenet-D"
-TTS_VOICE_GENDER: str = "NEUTRAL"  # MALE, FEMALE, NEUTRAL
-TTS_AUDIO_FORMAT: str = "MP3"      # MP3, LINEAR16, OGG_OPUS
-TTS_TIMEOUT_S: float = 15.0
-```
-
-Verify:
-```python
-from gcp_speech_to_speech_translation.config import settings
-print(f"TTS Voice: {settings.TTS_VOICE_NAME}")
-print(f"TTS Format: {settings.TTS_AUDIO_FORMAT}")
-```
-```
+**Verwacht resultaat:** Werkende TTS functie die audio bytes produceert
 
 ---
 
-## Micro-Iteratie 6C: Integration & Testing
+## Micro-Iteratie 6C: Integration
 
-### Step 6C.1: Replace Mock in Pipeline
-**Prompt voor LLM:**
-```
-MICRO-STEP 6C.1: Replace mock_text_to_speech in main.py
+### Step 6C.1: Update Pipeline in main.py
+**Wat moet de LLM doen:**
+- Vervang `mock_text_to_speech` import door `real_text_to_speech` in main.py
+- Update de `process_pipeline` functie om `real_text_to_speech` te gebruiken
+- Behoud alle bestaande retry en error handling logic
+- Zorg dat pipeline nu is: Real STT → Real Translation → Real TTS
+- Update any timeout configurations voor langere TTS processing tijd
+- Verifieer dat alle resilience patterns (circuit breaker, fallback) nog werken
 
-UPDATE imports:
-```python
-from .services import (
-    real_speech_to_text,
-    real_translation,
-    real_text_to_speech,  # ← CHANGE THIS
-)
-```
+**Verwacht resultaat:** Complete real-time translation pipeline werkend
 
-UPDATE process_pipeline function:
-```python
-async def process_pipeline(audio_chunk: bytes) -> bytes:
-    text_result = await real_speech_to_text(audio_chunk)
-    translation_result = await real_translation(text_result)
-    output_audio = await real_text_to_speech(translation_result)  # ← CHANGE THIS
-    return output_audio
-```
+### Step 6C.2: Test Complete Pipeline Integration
+**Wat moet de LLM doen:**
+- Run de TTS integration test (moet nu slagen)
+- Run alle bestaande tests om regression te checken
+- Test de complete WebSocket pipeline met real audio input
+- Voer end-to-end test uit: Dutch audio → English audio
+- Meet totale pipeline latency (STT + Translation + TTS)
+- Test met verschillende tekst lengtes en complexiteit
+- Verifieer audio output quality en playback capability
+- Test concurrent pipeline requests
 
-COMPLETE PIPELINE NOW: Real STT → Real Translation → Real TTS ✅
-```
-
-### Step 6C.2: Test Integration & Performance
-**Prompt voor LLM:**
-```
-MICRO-STEP 6C.2: Comprehensive testing
-
-1. Test TTS specifically:
-```bash
-poetry run pytest tests/test_real_tts_integration.py -v
-```
-
-2. Test full pipeline with all real APIs:
-```bash
-poetry run pytest tests/test_real_stt_integration.py -v
-```
-
-3. Performance test - check total latency:
-```bash
-poetry run pytest tests/test_iteration3_comprehensive.py::TestHappyPath::test_successful_pipeline -v -s
-```
-
-4. Manual end-to-end test:
-```bash
-poetry run python -c "
-import asyncio
-from gcp_speech_to_speech_translation.services import real_speech_to_text, real_translation, real_text_to_speech
-
-async def test_full_pipeline():
-    # Use dummy audio bytes for testing
-    audio_in = b'\\x00' * 1000  # Will likely fail STT, but tests TTS
-    try:
-        text = await real_speech_to_text(audio_in)
-        translation = await real_translation('hallo wereld')
-        audio_out = await real_text_to_speech(translation)
-        print(f'Success! Audio output: {len(audio_out)} bytes')
-    except Exception as e:
-        print(f'Error: {e}')
-
-asyncio.run(test_full_pipeline())
-"
-```
-
-PERFORMANCE EXPECTATIONS:
-- Total pipeline latency: 2-5 seconds (depending on text length)
-- TTS latency: 1-3 seconds (text-dependent)
-- Audio output: 5-50KB for typical phrases
-```
+**Verwacht resultaat:** Complete pipeline werkt, alle tests slagen
 
 ---
 
 ## Micro-Iteratie 6D: Health Check & Optimization
 
 ### Step 6D.1: Add TTS Health Check
-**Prompt voor LLM:**
-```
-MICRO-STEP 6D.1: Add TTS health check endpoint
+**Wat moet de LLM doen:**
+- Voeg TTS client initialization toe aan app startup event
+- Maak global `tts_client` variabele (zoals bestaande clients)
+- Implementeer `/health/tts` endpoint
+- Health check moet TTS API testen met minimal text
+- Return status, client connection status, audio output size, voice config
+- Implementeer `/health/full` endpoint voor complete pipeline health
+- Test alle services samen (STT + Translation + TTS)
+- Voeg proper error handling toe voor failed health checks
 
-Add to main.py:
+**Verwacht resultaat:** Complete health monitoring voor alle pipeline components
 
-```python
-@app.get("/health/tts")
-async def health_tts():
-    """Health check endpoint for Google Cloud Text-to-Speech service."""
-    try:
-        # Quick TTS test with minimal text
-        test_audio = await real_text_to_speech("test")
-        
-        return {
-            "status": "ok",
-            "tts_client": "connected", 
-            "test_audio_size": len(test_audio),
-            "voice": f"{settings.TTS_VOICE_NAME}",
-            "format": settings.TTS_AUDIO_FORMAT
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "tts_client": "disconnected",
-            "error": str(e)
-        }
+### Step 6D.2: Performance Optimization & Final Validation
+**Wat moet de LLM doen:**
+- Implementeer TTS client connection pooling en reuse
+- Add audio output size monitoring en logging
+- Optimize timeout settings based on text length
+- Test different audio formats voor performance vs quality trade-offs
+- Implementeer response streaming voor large audio outputs (indien nodig)
+- Meet en optimize memory usage voor audio processing
+- Run comprehensive performance tests (latency, throughput, concurrency)
+- Test audio playback compatibility in different browsers
+- Validate complete user journey: speak Dutch → hear English
 
-@app.get("/health/full")
-async def health_full_pipeline():
-    """Health check for the complete pipeline."""
-    try:
-        # Test minimal pipeline
-        dummy_text = "hello"
-        audio_result = await real_text_to_speech(dummy_text)
-        
-        return {
-            "status": "ok",
-            "pipeline": "stt+translation+tts",
-            "components": {
-                "speech_to_text": "connected",
-                "translation": "connected", 
-                "text_to_speech": "connected"
-            },
-            "test_audio_size": len(audio_result)
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "pipeline": "degraded",
-            "error": str(e)
-        }
-```
-
-Test endpoints:
-```bash
-curl http://localhost:8000/health/tts
-curl http://localhost:8000/health/full
-```
-```
-
-### Step 6D.2: Performance Optimization
-**Prompt voor LLM:**
-```
-MICRO-STEP 6D.2: Optimize for production readiness
-
-OPTIMIZATIONS TO CONSIDER:
-
-1. **Client Connection Pooling** (add to real_text_to_speech):
-```python
-# Initialize client once, reuse connections
-_tts_client = None
-
-def get_tts_client():
-    global _tts_client
-    if _tts_client is None:
-        _tts_client = texttospeech.TextToSpeechClient()
-    return _tts_client
-```
-
-2. **Response Size Monitoring** (add logging):
-```python
-# Log audio size for monitoring
-audio_size_kb = len(audio_content) / 1024
-logging.info(f"TTS: Generated {audio_size_kb:.1f}KB audio for {len(text)} chars")
-```
-
-3. **Format Configuration** (environment-based):
-```python
-# Allow format switching via environment
-audio_format = getattr(texttospeech.AudioEncoding, settings.TTS_AUDIO_FORMAT)
-```
-
-4. **Timeout Tuning** (adjust for text length):
-```python
-# Dynamic timeout based on text length
-estimated_duration = max(5.0, len(text) * 0.1)  # 100ms per character
-timeout = min(estimated_duration, settings.TTS_TIMEOUT_S)
-```
-
-PERFORMANCE TARGETS:
-- TTS latency: <2s for sentences <100 chars
-- Audio compression: MP3 ~10KB for 10-word sentences
-- Memory efficiency: Stream large audio responses
-```
+**Verwacht resultaat:** Production-ready pipeline met optimized performance
 
 ---
 
-## Error Scenarios & Troubleshooting
+## Success Criteria per Micro-Step
 
-### Common Issues for Iteratie 6
-**Prompt voor LLM indien problemen:**
-```
-TROUBLESHOOTING GUIDE voor Iteratie 6:
+### 6A - Test-First Development
+✅ **6A.1:** TTS test faalt zoals verwacht (functie bestaat niet)  
+✅ **6A.2:** Google Cloud TTS library geïnstalleerd en werkend
 
-IF: "Audio format not supported" error
-SOLUTION: Check TTS_AUDIO_FORMAT setting, use MP3/LINEAR16/OGG_OPUS
+### 6B - Implementation  
+✅ **6B.1:** TTS configuratie toegankelijk via settings (voice, format, etc.)  
+✅ **6B.2:** `real_text_to_speech` functie produceert valide audio bytes
 
-IF: "Voice not found" error  
-SOLUTION: Verify TTS_VOICE_NAME exists in selected language
-LIST VOICES: `gcloud ml speech voices list --filter="languageCode:en-US"`
+### 6C - Integration
+✅ **6C.1:** Pipeline gebruikt real TTS (geen mock meer)  
+✅ **6C.2:** Complete end-to-end pipeline werkt (Dutch audio → English audio)
 
-IF: Large audio files (>1MB)
-SOLUTION: Check text length, consider audio format compression, add size limits
-
-IF: TTS quota exceeded
-SOLUTION: Monitor usage, implement caching for repeated phrases, use Standard voices
-
-IF: Audio playback issues in browser
-SOLUTION: Ensure MP3 format, check CORS headers, validate audio encoding
-
-DEBUG COMMANDS:
-```bash
-# Test TTS directly
-poetry run python -c "
-import asyncio
-from gcp_speech_to_speech_translation.services import real_text_to_speech
-audio = asyncio.run(real_text_to_speech('hello world'))
-print(f'Audio size: {len(audio)} bytes')
-with open('test_output.mp3', 'wb') as f:
-    f.write(audio)
-print('Saved to test_output.mp3')
-"
-
-# Check available voices
-gcloud ml speech voices list --filter="languageCode:en-US" --limit=10
-```
-```
+### 6D - Health Check & Optimization
+✅ **6D.1:** Health endpoints voor TTS en complete pipeline werkend  
+✅ **6D.2:** Performance geoptimaliseerd, production-ready
 
 ---
 
-## Success Criteria for Iteratie 6
+## Globale Success Criteria voor Iteratie 6
 
-✅ **Checklist:**
-- [ ] Google Cloud TTS dependency installed
-- [ ] real_text_to_speech function with proper audio config
-- [ ] TTS configuration added (voice, format, timeout)
-- [ ] Mock replaced in main pipeline  
-- [ ] TTS-specific test passes
-- [ ] Full pipeline test passes (STT→Translation→TTS)
-- [ ] Health check endpoints working
-- [ ] Performance within acceptable ranges
+### Functioneel
+- [ ] `real_text_to_speech` functie geïmplementeerd en produceert audio
+- [ ] Complete pipeline: Real STT → Real Translation → Real TTS
+- [ ] End-to-end werking: Dutch speech input → English speech output
+- [ ] Alle bestaande tests blijven slagen
+- [ ] TTS integration tests slagen
+- [ ] Audio output speelbaar in web browsers
 
-✅ **Performance Targets:**
-- TTS latency: <3s for typical phrases (10-20 words)
-- Audio size: 5-50KB for sentences 
-- Total pipeline: <6s end-to-end
-- Memory usage: No significant increase
+### Performance
+- [ ] TTS latency < 3 seconden voor typische zinnen (10-20 woorden)
+- [ ] Complete pipeline latency < 8 seconden end-to-end
+- [ ] Audio output size redelijk (5-50KB voor zinnen)
+- [ ] Memory usage stabiel bij audio processing
+- [ ] Concurrent pipeline requests mogelijk
 
-✅ **Quality Gates:**
-- All tests pass (including existing ones)
-- Audio output playable in browsers
-- Proper error handling and fallbacks
-- Health endpoints return valid status
-- No performance regression
+### Audio Quality & Formats
+- [ ] Audio output kwaliteit acceptabel voor spraakbegrip
+- [ ] Audio format geschikt voor web playback (MP3/OGG)
+- [ ] Audio encoding compatible met verschillende browsers
+- [ ] Voice quality en natuurlijkheid acceptabel
+- [ ] Proper audio sample rate en bitrate
+
+### Quality & Resilience  
+- [ ] Retry logic werkt bij TTS API failures
+- [ ] Circuit breaker patterns behouden voor complete pipeline
+- [ ] Proper error handling en logging voor audio processing
+- [ ] Graceful fallback bij TTS failures
+- [ ] Audio size limits en validation
+- [ ] No memory leaks bij audio processing
+
+### Monitoring & Ops
+- [ ] Health endpoints voor TTS en complete pipeline
+- [ ] TTS client properly initialized at startup
+- [ ] Audio processing metrics logged (size, duration, format)
+- [ ] API errors logged met voldoende detail
+- [ ] Performance metrics voor complete pipeline
 
 ---
 
-## Post-Completion: Ready for Iteratie 7
+## Special Considerations voor TTS
 
-After successful completion of Iteratie 6:
+### Audio Format Decisions
+**Wat moet de LLM overwegen:**
+- MP3: Good compression, universal web support, reasonable quality
+- LINEAR16: Uncompressed, larger files, highest quality
+- OGG_OPUS: Good compression, modern browsers, good quality
+- Consider target platform: web browser audio playback capabilities
 
-🎯 **ACHIEVEMENT:** Complete Real-Time Translation Pipeline
-- ✅ Real Speech-to-Text (Dutch audio → Dutch text)
-- ✅ Real Translation (Dutch text → English text)  
-- ✅ Real Text-to-Speech (English text → English audio)
+### Voice Selection Strategy
+**Wat moet de LLM overwegen:**
+- Standard voices: Lower cost, good quality
+- Wavenet voices: Higher quality, more natural, higher cost
+- Neural2 voices: Latest technology, best quality, highest cost
+- Gender selection: NEUTRAL default, configurable via environment
 
-🚀 **NEXT:** Iteratie 7 - Broadcasting to Multiple Listeners
+### Performance Trade-offs
+**Wat moet de LLM overwegen:**
+- Text length vs processing time (longer text = longer TTS processing)
+- Audio quality vs file size vs processing speed
+- Real-time requirements vs quality requirements
+- Concurrent request handling vs resource usage
+
+---
+
+## Post-Completion: Complete Real-Time Translation Pipeline
+
+**ACHIEVED PIPELINE:**
+```
+✅ Real STT (Dutch audio → Dutch text)
+✅ Real Translation (Dutch text → English text)  
+✅ Real TTS (English text → English audio)
+```
+
+**COMPLETE USER JOURNEY:**
+```
+🎤 Dutch Speech Input → 🔄 Processing → 🔊 English Speech Output
+```
+
+**Readiness for Production:**
+- Complete end-to-end real-time translation
+- Full health monitoring and observability
+- Performance optimized for web deployment
+- Ready for Iteratie 7: Multi-user broadcasting
+
+**Next Phase Preview (Iteratie 7):**
 - Transform from 1-on-1 to 1-to-many architecture
-- Implement ConnectionManager for WebSocket broadcasting
-- Add stream_id concept for multiple concurrent streams
+- Implement ConnectionManager for WebSocket broadcasting  
+- Add stream_id concept for multiple concurrent translation streams
+- Enable multiple listeners per speaker
