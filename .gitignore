@@ -26,6 +26,9 @@ htmlcov/
 tests/fixtures/*.wav
 tests/fixtures/*.m4a
 tests/fixtures/*.mp3
+*.mp3
+*.wav
+*.m4a
 
 
 # IDE
