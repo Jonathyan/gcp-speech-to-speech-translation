@@ -10,7 +10,7 @@ import os
 async def test_wav_translation():
     # Path to your existing test WAV file
     wav_file = "tests/fixtures/hallo_wereld.wav"
-    output_file = "output_english.mp3"
+    output_file = "tests/fixtures/output_english.mp3"
     
     print(f"🎵 Reading WAV file: {wav_file}")
     
