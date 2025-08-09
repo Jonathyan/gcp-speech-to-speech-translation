@@ -107,6 +107,70 @@ async def real_speech_to_text(audio_chunk: bytes) -> str:
         raise
 
 
+async def real_translation(text: str) -> str:
+    """
+    Production-ready Google Cloud Translation API v2 met resilience patterns.
+    """
+    import os
+    from google.cloud import translate_v2 as translate
+    from google.api_core import exceptions as gcp_exceptions
+    from tenacity import retry, stop_after_attempt, wait_exponential
+    
+    # Configuratie via environment variables
+    source_language = os.getenv('TRANSLATION_SOURCE_LANGUAGE', 'nl')
+    target_language = os.getenv('TRANSLATION_TARGET_LANGUAGE', 'en')
+    timeout_seconds = float(os.getenv('TRANSLATION_TIMEOUT_S', '10.0'))
+    
+    logging.info(f"Translation: Real API call - '{text}' ({source_language} → {target_language})")
+    
+    @retry(
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=0.5, max=2),
+        reraise=True
+    )
+    async def _translate_with_retry():
+        try:
+            client = translate.Client()
+            
+            # Async executor pattern voor API call
+            loop = asyncio.get_event_loop()
+            
+            def _sync_translate():
+                return client.translate(
+                    text,
+                    source_language=source_language,
+                    target_language=target_language
+                )
+            
+            # Run in executor met timeout
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, _sync_translate),
+                timeout=timeout_seconds
+            )
+            
+            translated_text = result['translatedText'].strip()
+            detected_language = result.get('detectedSourceLanguage', source_language)
+            
+            logging.info(f"Translation: Success - '{translated_text}' (detected: {detected_language})")
+            return translated_text
+                
+        except gcp_exceptions.GoogleAPIError as e:
+            logging.error(f"Translation: Google API error - {e}")
+            raise Exception(f"Google Cloud Translation API Error: {e}")
+        except asyncio.TimeoutError:
+            logging.error(f"Translation: Timeout after {timeout_seconds}s")
+            raise Exception(f"Translation timeout after {timeout_seconds}s")
+        except Exception as e:
+            logging.error(f"Translation: Unexpected error - {e}")
+            raise Exception(f"Translation Error: {e}")
+    
+    try:
+        return await _translate_with_retry()
+    except Exception as e:
+        logging.error(f"Translation: Final failure after retries - {e}")
+        raise
+
+
 async def mock_translation(text: str) -> str:
     """
     Simuleert een Translation API-aanroep.

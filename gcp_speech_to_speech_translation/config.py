@@ -23,6 +23,11 @@ class AppSettings(BaseSettings):
     STT_LANGUAGE_CODE: str = "nl-NL"
     STT_TIMEOUT_S: float = 10.0
 
+    # Translation configuratie
+    TRANSLATION_SOURCE_LANGUAGE: str = "nl"
+    TRANSLATION_TARGET_LANGUAGE: str = "en"
+    TRANSLATION_TIMEOUT_S: float = 10.0
+
     # Circuit Breaker-instellingen
     CIRCUIT_BREAKER_FAIL_MAX: int = 5  # Na 5 opeenvolgende fouten opent de breaker
     CIRCUIT_BREAKER_RESET_TIMEOUT_S: int = 30  # Probeer na 30s weer te sluiten

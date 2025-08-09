@@ -7,12 +7,13 @@ from starlette.websockets import WebSocketState
 from tenacity import retry, stop_after_attempt, wait_exponential, RetryError
 import pybreaker
 from google.cloud import speech
+from google.cloud import translate_v2 as translate
 
-# Importeer de mock services vanuit hetzelfde package
+# Importeer de services vanuit hetzelfde package
 from .services import (
     real_speech_to_text,
+    real_translation,
     mock_text_to_speech,
-    mock_translation,
 )
 
 # Importeer de configuratie en resilience componenten
@@ -37,12 +38,13 @@ app = FastAPI(
     version="0.3.0",
 )
 
-# Initialize Google Cloud Speech client
+# Initialize Google Cloud clients
 speech_client = None
+translation_client = None
 
 @app.on_event("startup")
 async def startup_event():
-    global speech_client
+    global speech_client, translation_client
     try:
         # Load credentials from environment variable
         credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
@@ -51,9 +53,13 @@ async def startup_event():
         
         speech_client = speech.SpeechClient()
         logging.info("Google Cloud Speech client initialized successfully")
+        
+        translation_client = translate.Client()
+        logging.info("Google Cloud Translation client initialized successfully")
     except Exception as e:
-        logging.error(f"Failed to initialize Google Cloud Speech client: {e}")
+        logging.error(f"Failed to initialize Google Cloud clients: {e}")
         speech_client = None
+        translation_client = None
 
 @app.get("/health/speech")
 async def health_speech():
@@ -62,6 +68,30 @@ async def health_speech():
         return {"status": "ok", "speech_client": "connected"}
     else:
         return {"status": "error", "speech_client": "disconnected"}
+
+@app.get("/health/translation")
+async def health_translation():
+    """Health check endpoint for Google Cloud Translation service."""
+    if translation_client is None:
+        return {"status": "error", "translation_client": "disconnected", "test_result": "failed"}
+    
+    try:
+        # Test translation API with minimal request
+        test_result = translation_client.translate("test", target_language="en")
+        return {
+            "status": "ok", 
+            "translation_client": "connected",
+            "test_result": "success",
+            "test_translation": test_result.get('translatedText', 'N/A')
+        }
+    except Exception as e:
+        logging.error(f"Translation health check failed: {e}")
+        return {
+            "status": "error", 
+            "translation_client": "connected",
+            "test_result": "failed",
+            "error": str(e)
+        }
 
 @pipeline_retry_decorator
 async def process_pipeline(audio_chunk: bytes) -> bytes:
@@ -74,7 +104,7 @@ async def process_pipeline(audio_chunk: bytes) -> bytes:
         logging.info(f"Pipeline-poging {attempt_num}...")
 
     text_result = await real_speech_to_text(audio_chunk)
-    translation_result = await mock_translation(text_result)
+    translation_result = await real_translation(text_result)
     output_audio = await mock_text_to_speech(translation_result)
     return output_audio
 
