@@ -61,7 +61,14 @@ The development follows a strict Test-Driven Development (TDD) approach, with ea
 *   ✅ **Performance optimization** - Sub-400ms response times for typical requests
 *   ✅ **Integration testing** - Full test suite with performance benchmarks
 
+
 ### Next Steps
+**Iteration 6: Google Cloud Text-to-Speech Integration**
+
+*   Replace `mock_text_to_speech` with real Google Cloud Text-to-Speech API
+*   Implement voice selection and audio format configuration
+*   Complete end-to-end real-time translation pipeline
+
 ## Current Architecture
 
 ```
@@ -109,13 +116,6 @@ The development follows a strict Test-Driven Development (TDD) approach, with ea
                                         │   ✅ Graceful Fallback Audio     │
                                         └─────────────────────────────────┘
 ```
-
-### Next Steps
-**Iteration 6: Google Cloud Text-to-Speech Integration**
-
-*   Replace `mock_text_to_speech` with real Google Cloud Text-to-Speech API
-*   Implement voice selection and audio format configuration
-*   Complete end-to-end real-time translation pipeline
 
 ## Development
 
