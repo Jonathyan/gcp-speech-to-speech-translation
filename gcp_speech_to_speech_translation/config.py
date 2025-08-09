@@ -16,7 +16,7 @@ class AppSettings(BaseSettings):
     API_RETRY_WAIT_MULTIPLIER_S: int = 1  # Wacht 1s, 2s, 4s, etc. tussen retries
 
     # Timeout-instellingen
-    PIPELINE_TIMEOUT_S: float = 2.0  # 2000ms for retries to work
+    PIPELINE_TIMEOUT_S: float = 5.0  # Increased for TTS processing time
     
     # Speech-to-Text configuratie
     STT_SAMPLE_RATE: int = 16000
@@ -27,6 +27,13 @@ class AppSettings(BaseSettings):
     TRANSLATION_SOURCE_LANGUAGE: str = "nl"
     TRANSLATION_TARGET_LANGUAGE: str = "en"
     TRANSLATION_TIMEOUT_S: float = 10.0
+
+    # Text-to-Speech configuratie
+    TTS_LANGUAGE_CODE: str = "en-US"
+    TTS_VOICE_NAME: str = "en-US-Wavenet-D"  # High-quality Wavenet voice
+    TTS_VOICE_GENDER: str = "NEUTRAL"  # MALE, FEMALE, NEUTRAL
+    TTS_AUDIO_FORMAT: str = "MP3"  # MP3, LINEAR16, OGG_OPUS
+    TTS_TIMEOUT_S: float = 10.0
 
     # Circuit Breaker-instellingen
     CIRCUIT_BREAKER_FAIL_MAX: int = 5  # Na 5 opeenvolgende fouten opent de breaker

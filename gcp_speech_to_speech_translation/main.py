@@ -8,12 +8,13 @@ from tenacity import retry, stop_after_attempt, wait_exponential, RetryError
 import pybreaker
 from google.cloud import speech
 from google.cloud import translate_v2 as translate
+from google.cloud import texttospeech
 
 # Importeer de services vanuit hetzelfde package
 from .services import (
     real_speech_to_text,
     real_translation,
-    mock_text_to_speech,
+    real_text_to_speech,
 )
 
 # Importeer de configuratie en resilience componenten
@@ -41,10 +42,11 @@ app = FastAPI(
 # Initialize Google Cloud clients
 speech_client = None
 translation_client = None
+tts_client = None
 
 @app.on_event("startup")
 async def startup_event():
-    global speech_client, translation_client
+    global speech_client, translation_client, tts_client
     try:
         # Load credentials from environment variable
         credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
@@ -56,10 +58,14 @@ async def startup_event():
         
         translation_client = translate.Client()
         logging.info("Google Cloud Translation client initialized successfully")
+        
+        tts_client = texttospeech.TextToSpeechClient()
+        logging.info("Google Cloud Text-to-Speech client initialized successfully")
     except Exception as e:
         logging.error(f"Failed to initialize Google Cloud clients: {e}")
         speech_client = None
         translation_client = None
+        tts_client = None
 
 @app.get("/health/speech")
 async def health_speech():
@@ -93,6 +99,115 @@ async def health_translation():
             "error": str(e)
         }
 
+@app.get("/health/tts")
+async def health_tts():
+    """Health check endpoint for Google Cloud Text-to-Speech service."""
+    if tts_client is None:
+        return {"status": "error", "tts_client": "disconnected", "test_result": "failed"}
+    
+    try:
+        # Test TTS API with minimal request
+        synthesis_input = texttospeech.SynthesisInput(text="test")
+        voice = texttospeech.VoiceSelectionParams(
+            language_code=settings.TTS_LANGUAGE_CODE,
+            name=settings.TTS_VOICE_NAME
+        )
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.MP3
+        )
+        
+        response = tts_client.synthesize_speech(
+            input=synthesis_input,
+            voice=voice,
+            audio_config=audio_config
+        )
+        
+        return {
+            "status": "ok",
+            "tts_client": "connected",
+            "test_result": "success",
+            "audio_output_size": len(response.audio_content),
+            "voice_config": {
+                "language": settings.TTS_LANGUAGE_CODE,
+                "voice_name": settings.TTS_VOICE_NAME,
+                "format": "MP3"
+            }
+        }
+    except Exception as e:
+        logging.error(f"TTS health check failed: {e}")
+        return {
+            "status": "error",
+            "tts_client": "connected",
+            "test_result": "failed",
+            "error": str(e)
+        }
+
+@app.get("/health/full")
+async def health_full():
+    """Complete pipeline health check for all services."""
+    try:
+        # Check all clients
+        if not all([speech_client, translation_client, tts_client]):
+            return {
+                "status": "error",
+                "pipeline": "incomplete",
+                "services": {
+                    "speech": "connected" if speech_client else "disconnected",
+                    "translation": "connected" if translation_client else "disconnected",
+                    "tts": "connected" if tts_client else "disconnected"
+                }
+            }
+        
+        # Test complete pipeline with minimal data
+        test_text = "test"
+        
+        # Test translation
+        translation_result = translation_client.translate(test_text, target_language="en")
+        translated_text = translation_result.get('translatedText', test_text)
+        
+        # Test TTS
+        synthesis_input = texttospeech.SynthesisInput(text=translated_text)
+        voice = texttospeech.VoiceSelectionParams(
+            language_code=settings.TTS_LANGUAGE_CODE,
+            name=settings.TTS_VOICE_NAME
+        )
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.MP3
+        )
+        
+        tts_response = tts_client.synthesize_speech(
+            input=synthesis_input,
+            voice=voice,
+            audio_config=audio_config
+        )
+        
+        return {
+            "status": "ok",
+            "pipeline": "complete",
+            "services": {
+                "speech": "connected",
+                "translation": "connected", 
+                "tts": "connected"
+            },
+            "test_results": {
+                "translation": translated_text,
+                "audio_size": len(tts_response.audio_content)
+            }
+        }
+        
+    except Exception as e:
+        logging.error(f"Full pipeline health check failed: {e}")
+        return {
+            "status": "error",
+            "pipeline": "failed",
+            "error": str(e),
+            "services": {
+                "speech": "connected" if speech_client else "disconnected",
+                "translation": "connected" if translation_client else "disconnected",
+                "tts": "connected" if tts_client else "disconnected"
+            }
+        }
+
 @pipeline_retry_decorator
 async def process_pipeline(audio_chunk: bytes) -> bytes:
     """
@@ -105,7 +220,7 @@ async def process_pipeline(audio_chunk: bytes) -> bytes:
 
     text_result = await real_speech_to_text(audio_chunk)
     translation_result = await real_translation(text_result)
-    output_audio = await mock_text_to_speech(translation_result)
+    output_audio = await real_text_to_speech(translation_result)
     return output_audio
 
 

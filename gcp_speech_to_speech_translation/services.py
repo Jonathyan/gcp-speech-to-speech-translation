@@ -188,6 +188,99 @@ async def mock_translation(text: str) -> str:
     return result
 
 
+async def real_text_to_speech(text: str) -> bytes:
+    """
+    Production-ready Google Cloud Text-to-Speech API met resilience patterns.
+    """
+    import os
+    from google.cloud import texttospeech
+    from google.api_core import exceptions as gcp_exceptions
+    from tenacity import retry, stop_after_attempt, wait_exponential
+    
+    # Configuratie via environment variables
+    language_code = os.getenv('TTS_LANGUAGE_CODE', 'en-US')
+    voice_name = os.getenv('TTS_VOICE_NAME', 'en-US-Wavenet-D')
+    voice_gender = os.getenv('TTS_VOICE_GENDER', 'NEUTRAL')
+    audio_format = os.getenv('TTS_AUDIO_FORMAT', 'MP3')
+    timeout_seconds = float(os.getenv('TTS_TIMEOUT_S', '10.0'))
+    
+    logging.info(f"TTS: Real API call - '{text}' ({language_code}, {voice_name}, {audio_format})")
+    
+    @retry(
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=0.5, max=2),
+        reraise=True
+    )
+    async def _synthesize_with_retry():
+        try:
+            client = texttospeech.TextToSpeechClient()
+            
+            # Configure synthesis input
+            synthesis_input = texttospeech.SynthesisInput(text=text)
+            
+            # Configure voice parameters
+            gender_mapping = {
+                'MALE': texttospeech.SsmlVoiceGender.MALE,
+                'FEMALE': texttospeech.SsmlVoiceGender.FEMALE,
+                'NEUTRAL': texttospeech.SsmlVoiceGender.NEUTRAL
+            }
+            
+            voice_params = texttospeech.VoiceSelectionParams(
+                language_code=language_code,
+                name=voice_name,
+                ssml_gender=gender_mapping.get(voice_gender, texttospeech.SsmlVoiceGender.NEUTRAL)
+            )
+            
+            # Configure audio format
+            format_mapping = {
+                'MP3': texttospeech.AudioEncoding.MP3,
+                'LINEAR16': texttospeech.AudioEncoding.LINEAR16,
+                'OGG_OPUS': texttospeech.AudioEncoding.OGG_OPUS
+            }
+            
+            audio_config = texttospeech.AudioConfig(
+                audio_encoding=format_mapping.get(audio_format, texttospeech.AudioEncoding.MP3)
+            )
+            
+            # Async executor pattern voor API call
+            loop = asyncio.get_event_loop()
+            
+            def _sync_synthesize():
+                return client.synthesize_speech(
+                    input=synthesis_input,
+                    voice=voice_params,
+                    audio_config=audio_config
+                )
+            
+            # Run in executor met timeout
+            response = await asyncio.wait_for(
+                loop.run_in_executor(None, _sync_synthesize),
+                timeout=timeout_seconds
+            )
+            
+            audio_content = response.audio_content
+            audio_size_kb = len(audio_content) / 1024
+            
+            logging.info(f"TTS: Success - {len(audio_content)} bytes ({audio_size_kb:.1f}KB) audio generated")
+            return audio_content
+                
+        except gcp_exceptions.GoogleAPIError as e:
+            logging.error(f"TTS: Google API error - {e}")
+            raise Exception(f"Google Cloud TTS API Error: {e}")
+        except asyncio.TimeoutError:
+            logging.error(f"TTS: Timeout after {timeout_seconds}s")
+            raise Exception(f"TTS timeout after {timeout_seconds}s")
+        except Exception as e:
+            logging.error(f"TTS: Unexpected error - {e}")
+            raise Exception(f"TTS Error: {e}")
+    
+    try:
+        return await _synthesize_with_retry()
+    except Exception as e:
+        logging.error(f"TTS: Final failure after retries - {e}")
+        raise
+
+
 async def mock_text_to_speech(text: str) -> bytes:
     """
     Simuleert een Text-to-Speech API-aanroep.

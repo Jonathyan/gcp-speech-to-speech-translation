@@ -16,6 +16,7 @@
  pybreaker = "1.4.0"
  google-cloud-speech = "^2.21.0"
  google-cloud-translate = "^3.21.1"
+ google-cloud-texttospeech = "^2.27.0"
 
  [tool.poetry.group.dev.dependencies]
  pytest = "^8.0.0"

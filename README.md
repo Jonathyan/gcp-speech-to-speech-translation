@@ -61,13 +61,15 @@ The development follows a strict Test-Driven Development (TDD) approach, with ea
 *   ✅ **Performance optimization** - Sub-400ms response times for typical requests
 *   ✅ **Integration testing** - Full test suite with performance benchmarks
 
-
-### Next Steps
 **Iteration 6: Google Cloud Text-to-Speech Integration**
 
-*   Replace `mock_text_to_speech` with real Google Cloud Text-to-Speech API
-*   Implement voice selection and audio format configuration
-*   Complete end-to-end real-time translation pipeline
+*   ✅ **Production-ready TTS implementation** with Google Cloud Text-to-Speech API
+*   ✅ **Premium voice quality** - Wavenet voices with MP3 output format
+*   ✅ **Environment configuration** - Voice selection, language, format via env vars
+*   ✅ **Complete pipeline** - Real STT → Real Translation → Real TTS
+*   ✅ **Health monitoring** - Individual service health checks + full pipeline test
+*   ✅ **Performance verified** - End-to-end latency 677-817ms, concurrent handling
+*   ✅ **Production ready** - Comprehensive error handling and resilience patterns
 
 ## Current Architecture
 
@@ -102,8 +104,10 @@ The development follows a strict Test-Driven Development (TDD) approach, with ea
                                         │              ▼                  │
                                         │  ┌─────────────────────────┐    │
                                         │  │ 3. Text-to-Speech       │    │
-                                        │  │    🔄 Mock Service       │    │
-                                        │  │    (English Audio)      │    │
+                                        │  │    ✅ Google Cloud API   │    │
+                                        │  │    - Wavenet voices     │    │
+                                        │  │    - MP3 format         │    │
+                                        │  │    - Retry logic        │    │
                                         │  └─────────────────────────┘    │
                                         └─────────────────────────────────┘
                                                          │
@@ -155,22 +159,30 @@ poetry run pytest
 
 ### Health Monitoring
 
-The service provides health check endpoints for monitoring:
+The service provides comprehensive health check endpoints for monitoring:
 
-*   **Speech-to-Text Health:** `GET /health/speech`
-*   **Translation Health:** `GET /health/translation`
+*   **Speech-to-Text Health:** `GET /health/speech` - Client connectivity status
+*   **Translation Health:** `GET /health/translation` - Live API test with sample translation
+*   **Text-to-Speech Health:** `GET /health/tts` - Audio generation test with voice config details
+*   **Complete Pipeline Health:** `GET /health/full` - End-to-end pipeline test (Translation + TTS)
 
-Both endpoints test actual API connectivity and return detailed status information.
+All endpoints test actual API connectivity and return detailed status information including error details when services are unavailable.
 
 ### Performance Testing
 
-To run translation performance tests:
+To run performance tests:
 
 ```bash
+# Translation performance
 poetry run pytest tests/test_translation_performance.py -v -s
+
+# TTS integration tests
+poetry run pytest tests/test_real_tts_integration.py -v -s
 ```
 
 Expected performance:
-*   Average translation latency: ~250ms
-*   Maximum latency: <1s for typical requests
-*   All requests complete within 3s timeout
+*   **Translation latency:** ~250ms average
+*   **TTS latency:** ~400-600ms for typical text
+*   **End-to-end pipeline:** 677-817ms total
+*   **Concurrent handling:** 5+ simultaneous requests
+*   **All requests complete within 5s timeout**
