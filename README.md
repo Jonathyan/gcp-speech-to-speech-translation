@@ -20,6 +20,9 @@ Real-time speech-to-speech translation service using Google Cloud APIs with broa
 - **Browser compatibility** checks and graceful degradation
 - **Comprehensive testing** with Jest (21 tests passing)
 
+![Alt tekst](UI-mock.png "Mockup of UI")
+
+
 ## 🏗️ Architecture Overview
 
 ![Alt tekst](gcp-arch.png "Solution Architecture in GCP")
