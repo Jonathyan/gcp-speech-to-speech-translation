@@ -6,9 +6,13 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 from tenacity import retry, stop_after_attempt, wait_exponential, RetryError
 import pybreaker
+from tenacity import RetryError
 from google.cloud import speech
 from google.cloud import translate_v2 as translate
 from google.cloud import texttospeech
+
+# Import ConnectionManager
+from .connection_manager import ConnectionManager
 
 # Importeer de services vanuit hetzelfde package
 from .services import (
@@ -43,6 +47,9 @@ app = FastAPI(
 speech_client = None
 translation_client = None
 tts_client = None
+
+# Initialize ConnectionManager
+connection_manager = ConnectionManager()
 
 @app.on_event("startup")
 async def startup_event():
@@ -307,3 +314,102 @@ async def websocket_endpoint(websocket: WebSocket):
         logging.error(f"[{client_id}] Onverwachte fout in WebSocket-loop: {e}", exc_info=True)
         if websocket.client_state != WebSocketState.DISCONNECTED:
             await websocket.close(code=1011, reason="Interne serverfout")
+
+
+@app.websocket("/ws/speak/{stream_id}")
+async def websocket_speaker_endpoint(websocket: WebSocket, stream_id: str):
+    """
+    WebSocket endpoint for speakers to send audio for translation.
+    """
+    await websocket.accept()
+    if websocket.client:
+        client_id = f"{websocket.client.host}:{websocket.client.port}"
+    else:
+        client_id = "testclient"
+    
+    logging.info(f"Speaker connected to stream '{stream_id}' from {client_id}")
+    
+    try:
+        while True:
+            message = await websocket.receive()
+            
+            if "bytes" in message and message.get("bytes") is not None:
+                audio_chunk = message["bytes"]
+                logging.info(f"[{client_id}] Speaker audio received ({len(audio_chunk)} bytes) for stream '{stream_id}'")
+                
+                try:
+                    # 1. Circuit Breaker Check
+                    if circuit_breaker.current_state == "open":
+                        logging.warning(f"[{client_id}] Circuit breaker open. Broadcasting fallback to stream '{stream_id}'")
+                        await connection_manager.broadcast_to_stream(stream_id, settings.FALLBACK_AUDIO)
+                        continue
+                    
+                    # 2. Pipeline Execution with Timeout
+                    try:
+                        async with asyncio.timeout(settings.PIPELINE_TIMEOUT_S):
+                            output_audio = await process_pipeline(audio_chunk)
+                            logging.info(f"[{client_id}] Pipeline completed for stream '{stream_id}'. Broadcasting to listeners.")
+                            await connection_manager.broadcast_to_stream(stream_id, output_audio)
+                    except asyncio.TimeoutError:
+                        logging.error(f"[{client_id}] Pipeline timeout for stream '{stream_id}'. Broadcasting fallback.")
+                        # Manually trigger circuit breaker failure
+                        try:
+                            circuit_breaker.call(lambda: None)
+                        except:
+                            pass
+                        await connection_manager.broadcast_to_stream(stream_id, settings.FALLBACK_AUDIO)
+                
+                except (RetryError, pybreaker.CircuitBreakerError, Exception) as e:
+                    # All errors lead to fallback broadcast
+                    if not isinstance(e, pybreaker.CircuitBreakerError):
+                        try:
+                            circuit_breaker.call(lambda: (_ for _ in ()).throw(Exception("Pipeline failed")))
+                        except:
+                            pass
+                    
+                    if isinstance(e, RetryError):
+                        logging.error(f"[{client_id}] Pipeline failed after retries for stream '{stream_id}'. Broadcasting fallback.")
+                    elif isinstance(e, pybreaker.CircuitBreakerError):
+                        logging.warning(f"[{client_id}] Circuit breaker blocked call for stream '{stream_id}'. Broadcasting fallback.")
+                    else:
+                        logging.critical(f"[{client_id}] Unexpected pipeline error for stream '{stream_id}': {e}", exc_info=True)
+                    
+                    await connection_manager.broadcast_to_stream(stream_id, settings.FALLBACK_AUDIO)
+            
+    except WebSocketDisconnect:
+        logging.info(f"Speaker {client_id} disconnected from stream '{stream_id}'")
+    except Exception as e:
+        logging.error(f"[{client_id}] Error in speaker endpoint: {e}", exc_info=True)
+        if websocket.client_state != WebSocketState.DISCONNECTED:
+            await websocket.close(code=1011, reason="Speaker endpoint error")
+
+
+@app.websocket("/ws/listen/{stream_id}")
+async def websocket_listener_endpoint(websocket: WebSocket, stream_id: str):
+    """
+    WebSocket endpoint for listeners to receive translated audio.
+    """
+    await websocket.accept()
+    if websocket.client:
+        client_id = f"{websocket.client.host}:{websocket.client.port}"
+    else:
+        client_id = "testclient"
+    
+    logging.info(f"Listener connected to stream '{stream_id}' from {client_id}")
+    
+    # Add listener to connection manager
+    connection_manager.add_listener(stream_id, websocket)
+    
+    try:
+        while True:
+            # Keep connection alive, wait for disconnect
+            await websocket.receive()
+            
+    except WebSocketDisconnect:
+        logging.info(f"Listener {client_id} disconnected from stream '{stream_id}'")
+        connection_manager.remove_listener(stream_id, websocket)
+    except Exception as e:
+        logging.error(f"[{client_id}] Error in listener endpoint: {e}", exc_info=True)
+        connection_manager.remove_listener(stream_id, websocket)
+        if websocket.client_state != WebSocketState.DISCONNECTED:
+            await websocket.close(code=1011, reason="Listener endpoint error")
