@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Speech Translation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            margin: 10px;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        #status {
+            margin: 20px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        #controls {
+            margin-top: 20px;
+        }
+        
+        @media (max-width: 480px) {
+            button {
+                display: block;
+                width: 100%;
+                margin: 10px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Live Speech Translation</h1>
+    
+    <button id="start-broadcast" disabled>Start Uitzending</button>
+    <button id="join-listener" disabled>Luister mee</button>
+    <button id="disconnect" disabled>Verbinding Verbreken</button>
+    
+    <div id="status">Ready</div>
+    <div id="controls"></div>
+    
+    <script src="../src/config.js"></script>
+    <script src="../src/utils.js"></script>
+    <script src="../src/connection.js"></script>
+    <script src="../src/ui.js"></script>
+    <script src="../src/app.js"></script>
+</body>
+</html>

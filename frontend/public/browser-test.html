@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser Compatibility Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .test-result { padding: 10px; margin: 5px 0; border-radius: 5px; }
+        .pass { background: #d4edda; color: #155724; }
+        .fail { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <h1>Browser Compatibility Test</h1>
+    <div id="results"></div>
+    
+    <h2>Manual Test</h2>
+    <iframe src="index.html" width="100%" height="400px"></iframe>
+    
+    <script>
+        function runCompatibilityTests() {
+            const results = document.getElementById('results');
+            const tests = [];
+            
+            // WebSocket support
+            if (typeof WebSocket !== 'undefined') {
+                tests.push({status: 'pass', message: '✓ WebSocket support detected'});
+            } else {
+                tests.push({status: 'fail', message: '✗ WebSocket not supported'});
+            }
+            
+            // DOM API support
+            if (typeof document.getElementById !== 'undefined') {
+                tests.push({status: 'pass', message: '✓ DOM API support'});
+            } else {
+                tests.push({status: 'fail', message: '✗ DOM API not supported'});
+            }
+            
+            // Event listener support
+            if (typeof document.addEventListener !== 'undefined') {
+                tests.push({status: 'pass', message: '✓ Event listener support'});
+            } else {
+                tests.push({status: 'fail', message: '✗ Event listener not supported'});
+            }
+            
+            // Local storage (for future use)
+            try {
+                localStorage.setItem('test', 'test');
+                localStorage.removeItem('test');
+                tests.push({status: 'pass', message: '✓ Local storage support'});
+            } catch (e) {
+                tests.push({status: 'fail', message: '✗ Local storage not supported'});
+            }
+            
+            // Browser info
+            tests.push({status: 'info', message: `Browser: ${navigator.userAgent}`});
+            tests.push({status: 'info', message: `Screen: ${screen.width}x${screen.height}`});
+            tests.push({status: 'info', message: `Viewport: ${window.innerWidth}x${window.innerHeight}`});
+            
+            // Render results
+            results.innerHTML = tests.map(test => 
+                `<div class="test-result ${test.status}">${test.message}</div>`
+            ).join('');
+        }
+        
+        // Run tests when page loads
+        window.addEventListener('load', runCompatibilityTests);
+    </script>
+</body>
+</html>

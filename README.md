@@ -72,7 +72,7 @@ The development follows a strict Test-Driven Development (TDD) approach, with ea
 *   ✅ **Production ready** - Comprehensive error handling and resilience patterns
 
 ### Next step
-**Iteration 7: Frontend Integration
+**Iteration 8: Frontend Integration**
 *   ✅ **Frontend development** - Basic HTML/JS client for live audio streaming
 
 

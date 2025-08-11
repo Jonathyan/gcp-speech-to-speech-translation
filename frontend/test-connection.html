@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Connection Test</title>
+</head>
+<body>
+    <h2>WebSocket Connection Test</h2>
+    <p>Open browser console to see connection attempts</p>
+    <p>Expected behavior without backend:</p>
+    <ul>
+        <li>Click "Start Uitzending" → Should show retry attempts</li>
+        <li>After 3 retries → Should show "Verbinding mislukt - Controleer of de server draait"</li>
+        <li>Buttons should re-enable after failure</li>
+    </ul>
+    
+    <iframe src="index.html" width="100%" height="400px"></iframe>
+    
+    <h3>Manual Test Instructions:</h3>
+    <ol>
+        <li>Click "Start Uitzending" - should see retry logic</li>
+        <li>Start backend: <code>poetry run uvicorn gcp_speech_to_speech_translation.main:app --reload</code></li>
+        <li>Click "Start Uitzending" again - should connect successfully</li>
+        <li>Click "Verbinding Verbreken" - should disconnect cleanly</li>
+    </ol>
+</body>
+</html>

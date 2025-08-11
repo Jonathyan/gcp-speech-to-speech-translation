@@ -54,3 +54,9 @@ credentials/service-account.json
 build/
 dist/
 *.egg-info/
+
+# Frontend build artifacts
+frontend/dist/
+frontend/node_modules/
+frontend/coverage/
+frontend/*.log
