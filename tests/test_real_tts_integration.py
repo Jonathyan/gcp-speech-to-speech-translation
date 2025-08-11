@@ -1,6 +1,6 @@
 import os
 import pytest
-from gcp_speech_to_speech_translation.services import real_text_to_speech
+from backend.services import real_text_to_speech
 
 
 @pytest.mark.asyncio

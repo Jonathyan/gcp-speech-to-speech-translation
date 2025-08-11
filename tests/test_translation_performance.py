@@ -1,7 +1,7 @@
 import os
 import time
 import pytest
-from gcp_speech_to_speech_translation.services import real_translation
+from backend.services import real_translation
 
 
 @pytest.mark.asyncio

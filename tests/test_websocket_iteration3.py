@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 # Importeer de 'app' instantie uit de nieuwe locatie binnen het package
 # om de ModuleNotFoundError op te lossen.
-from gcp_speech_to_speech_translation.main import app
+from backend.main import app
 
 
 @pytest.mark.asyncio
@@ -22,7 +22,7 @@ async def test_full_mocked_pipeline_with_binary_data():
     """
     # Patch random to ensure success
     from unittest.mock import patch
-    with patch('gcp_speech_to_speech_translation.services.random.random', return_value=1.0):
+    with patch('backend.services.random.random', return_value=1.0):
         # De websocket context manager van de TestClient is synchroon.
         with TestClient(app).websocket_connect("/ws") as websocket:
             # Een voorbeeld van een binair audio-chunk, zoals beschreven in het plan.

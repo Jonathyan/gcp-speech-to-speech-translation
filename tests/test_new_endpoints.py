@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, Mock
-from gcp_speech_to_speech_translation.main import app
+from backend.main import app
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def test_stream_id_parameter_extraction_speaker(client):
     stream_id = "my-special-stream"
     
     # Mock the connection manager to verify stream_id is used
-    with patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager:
+    with patch('backend.main.connection_manager') as mock_manager:
         with client.websocket_connect(f"/ws/speak/{stream_id}") as websocket:
             # Just connecting should be enough to trigger stream_id usage
             pass
@@ -39,7 +39,7 @@ def test_stream_id_parameter_extraction_listener(client):
     stream_id = "another-test-stream"
     
     # Mock the connection manager to verify listener is added with correct stream_id
-    with patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager:
+    with patch('backend.main.connection_manager') as mock_manager:
         with client.websocket_connect(f"/ws/listen/{stream_id}") as websocket:
             # Verify add_listener was called with correct stream_id
             mock_manager.add_listener.assert_called()
@@ -51,7 +51,7 @@ def test_listener_added_to_connection_manager(client):
     """Test that listeners are properly added to ConnectionManager."""
     stream_id = "listener-test-stream"
     
-    with patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager:
+    with patch('backend.main.connection_manager') as mock_manager:
         with client.websocket_connect(f"/ws/listen/{stream_id}") as websocket:
             # Verify add_listener was called
             mock_manager.add_listener.assert_called_once()
@@ -76,7 +76,7 @@ def test_multiple_listeners_same_stream(client):
     """Test that multiple listeners can connect to same stream."""
     stream_id = "multi-listener-stream"
     
-    with patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager:
+    with patch('backend.main.connection_manager') as mock_manager:
         # Connect first listener
         with client.websocket_connect(f"/ws/listen/{stream_id}") as ws1:
             # Connect second listener
@@ -95,7 +95,7 @@ def test_different_stream_ids_isolated(client):
     stream_id_1 = "stream-one"
     stream_id_2 = "stream-two"
     
-    with patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager:
+    with patch('backend.main.connection_manager') as mock_manager:
         with client.websocket_connect(f"/ws/listen/{stream_id_1}") as ws1:
             with client.websocket_connect(f"/ws/listen/{stream_id_2}") as ws2:
                 # Should have two separate add_listener calls

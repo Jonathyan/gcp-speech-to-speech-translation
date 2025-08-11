@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from gcp_speech_to_speech_translation.main import app
+from backend.main import app
 
 
 def test_health_speech_endpoint():

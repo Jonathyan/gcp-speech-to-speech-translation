@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from unittest.mock import patch
 
-from gcp_speech_to_speech_translation.main import app
+from backend.main import app
 
 
 def test_real_stt_integration_with_audio_file():
@@ -23,12 +23,12 @@ def test_real_stt_integration_with_audio_file():
         real_audio_data = f.read()
     
     # Mock Translation en TTS, maar gebruik echte STT
-    with patch('gcp_speech_to_speech_translation.main.real_speech_to_text') as mock_stt, \
-         patch('gcp_speech_to_speech_translation.services.random.random', return_value=1.0):
+    with patch('backend.main.real_speech_to_text') as mock_stt, \
+         patch('backend.services.random.random', return_value=1.0):
         
         # Import de nog-niet-bestaande real STT function
         try:
-            from gcp_speech_to_speech_translation.services import real_speech_to_text
+            from backend.services import real_speech_to_text
             mock_stt.side_effect = real_speech_to_text
         except ImportError:
             pytest.fail("real_speech_to_text function niet gevonden - implementatie ontbreekt")

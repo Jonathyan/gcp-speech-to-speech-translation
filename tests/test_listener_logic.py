@@ -2,7 +2,7 @@ import pytest
 import asyncio
 from fastapi.testclient import TestClient
 from unittest.mock import patch, Mock, AsyncMock
-from gcp_speech_to_speech_translation.main import app
+from backend.main import app
 
 
 @pytest.fixture
@@ -14,7 +14,7 @@ def test_listener_added_to_connection_manager_on_connect(client):
     """Test that listener is added to ConnectionManager when connecting."""
     stream_id = "test-stream"
     
-    with patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager:
+    with patch('backend.main.connection_manager') as mock_manager:
         with client.websocket_connect(f"/ws/listen/{stream_id}") as websocket:
             # Verify add_listener was called
             mock_manager.add_listener.assert_called_once()
@@ -27,7 +27,7 @@ def test_listener_removed_from_connection_manager_on_disconnect(client):
     """Test that listener is removed from ConnectionManager when disconnecting."""
     stream_id = "test-stream"
     
-    with patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager:
+    with patch('backend.main.connection_manager') as mock_manager:
         with client.websocket_connect(f"/ws/listen/{stream_id}") as websocket:
             pass  # Connection will be closed when exiting context
         
@@ -42,7 +42,7 @@ def test_multiple_listeners_same_stream_managed_correctly(client):
     """Test that multiple listeners for same stream are managed correctly."""
     stream_id = "multi-listener-stream"
     
-    with patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager:
+    with patch('backend.main.connection_manager') as mock_manager:
         # Connect first listener
         with client.websocket_connect(f"/ws/listen/{stream_id}") as ws1:
             # Connect second listener
@@ -63,7 +63,7 @@ def test_listener_connection_lifecycle(client):
     """Test complete listener connection lifecycle."""
     stream_id = "lifecycle-test"
     
-    with patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager:
+    with patch('backend.main.connection_manager') as mock_manager:
         # Test connection phase
         with client.websocket_connect(f"/ws/listen/{stream_id}") as websocket:
             # Verify listener was added
@@ -80,7 +80,7 @@ def test_listener_error_handling_cleanup(client):
     """Test that listeners are cleaned up even when errors occur."""
     stream_id = "error-test"
     
-    with patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager:
+    with patch('backend.main.connection_manager') as mock_manager:
         # Simulate connection that will have an error
         mock_manager.add_listener.side_effect = Exception("Connection error")
         
@@ -99,7 +99,7 @@ def test_different_streams_isolated_in_connection_manager(client):
     stream_1 = "stream-one"
     stream_2 = "stream-two"
     
-    with patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager:
+    with patch('backend.main.connection_manager') as mock_manager:
         # Connect to different streams
         with client.websocket_connect(f"/ws/listen/{stream_1}") as ws1:
             with client.websocket_connect(f"/ws/listen/{stream_2}") as ws2:
@@ -120,7 +120,7 @@ def test_listener_connection_stability(client):
     """Test that listener connections remain stable and handle keepalive."""
     stream_id = "stability-test"
     
-    with patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager:
+    with patch('backend.main.connection_manager') as mock_manager:
         with client.websocket_connect(f"/ws/listen/{stream_id}") as websocket:
             # Verify connection is established
             mock_manager.add_listener.assert_called_once()

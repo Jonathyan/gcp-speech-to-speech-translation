@@ -15,8 +15,8 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 # Importeer de app en de componenten die we willen testen en mocken
-from gcp_speech_to_speech_translation.main import app, circuit_breaker
-from gcp_speech_to_speech_translation.config import settings
+from backend.main import app, circuit_breaker
+from backend.config import settings
 
 # Gebruik pytest-asyncio voor alle asynchrone tests in deze module
 pytestmark = pytest.mark.asyncio
@@ -48,10 +48,10 @@ class TestHappyPath:
         een succesvolle vertaling en correcte timing.
         """
         # Patch random.random en gebruik mock STT voor deze test
-        with patch('gcp_speech_to_speech_translation.services.random.random', return_value=1.0), \
-             patch('gcp_speech_to_speech_translation.main.real_speech_to_text') as mock_stt:
+        with patch('backend.services.random.random', return_value=1.0), \
+             patch('backend.main.real_speech_to_text') as mock_stt:
             
-            from gcp_speech_to_speech_translation.services import mock_speech_to_text
+            from backend.services import mock_speech_to_text
             mock_stt.side_effect = mock_speech_to_text
             with test_client.websocket_connect("/ws") as websocket:
                 start_time = asyncio.get_event_loop().time()
@@ -81,7 +81,7 @@ class TestErrorAndResilienceScenarios:
         # Bij de retry-poging slagen alle drie de calls.
         # We need 6 calls: 1st attempt (fail, success, success) + 2nd attempt (success, success, success)
         error_then_success = [0.05, 0.9, 0.9, 0.9, 0.9, 0.9]
-        with patch('gcp_speech_to_speech_translation.services.random.random', side_effect=error_then_success):
+        with patch('backend.services.random.random', side_effect=error_then_success):
             with test_client.websocket_connect("/ws") as websocket:
                 websocket.send_bytes(b'test_retry')
                 response_audio = websocket.receive_bytes()
@@ -94,7 +94,7 @@ class TestErrorAndResilienceScenarios:
         """
         # De STT-stap slaagt, maar de Translation-stap faalt consequent.
         stt_success_translation_fail = [0.9, 0.05, 0.05, 0.05]
-        with patch('gcp_speech_to_speech_translation.services.random.random', side_effect=stt_success_translation_fail):
+        with patch('backend.services.random.random', side_effect=stt_success_translation_fail):
             with test_client.websocket_connect("/ws") as websocket:
                 websocket.send_bytes(b'test_translation_fail')
                 response_audio = websocket.receive_bytes()
@@ -108,7 +108,7 @@ class TestErrorAndResilienceScenarios:
         en verwacht een fallback-respons.
         """
         # Alle `random` calls veroorzaken een fout.
-        with patch('gcp_speech_to_speech_translation.services.random.random', return_value=0.01):
+        with patch('backend.services.random.random', return_value=0.01):
             with test_client.websocket_connect("/ws") as websocket:
                 websocket.send_bytes(b'test_fallback')
                 response_audio = websocket.receive_bytes()
@@ -122,7 +122,7 @@ class TestErrorAndResilienceScenarios:
         """
         assert circuit_breaker.current_state == "closed"
 
-        with patch('gcp_speech_to_speech_translation.services.random.random', return_value=0.01):  # Altijd falen
+        with patch('backend.services.random.random', return_value=0.01):  # Altijd falen
             with test_client.websocket_connect("/ws") as websocket:
                 # Trigger genoeg fouten om de breaker te openen
                 for i in range(settings.CIRCUIT_BREAKER_FAIL_MAX):
@@ -148,7 +148,7 @@ class TestPerformanceAndEdgeCases:
 
     async def test_empty_audio_chunk_is_handled(self, test_client):
         """Test dat het sturen van een lege bytestring correct wordt afgehandeld."""
-        with patch('gcp_speech_to_speech_translation.services.random.random', return_value=1.0):
+        with patch('backend.services.random.random', return_value=1.0):
             with test_client.websocket_connect("/ws") as websocket:
                 websocket.send_bytes(b'')
                 response = websocket.receive_bytes()
@@ -157,7 +157,7 @@ class TestPerformanceAndEdgeCases:
     async def test_large_audio_chunk_is_handled(self, test_client):
         """Test dat een grote (1MB) audio-chunk de server niet laat crashen."""
         large_chunk = b'\x00' * (1024 * 1024)  # 1MB
-        with patch('gcp_speech_to_speech_translation.services.random.random', return_value=1.0):
+        with patch('backend.services.random.random', return_value=1.0):
             with test_client.websocket_connect("/ws") as websocket:
                 websocket.send_bytes(large_chunk)
                 response = websocket.receive_bytes()
@@ -180,7 +180,7 @@ class TestConcurrencyAndMalformedData:
                 assert response == b'mock_english_audio_output'
 
         # Patch random om altijd te slagen voor deze test
-        with patch('gcp_speech_to_speech_translation.services.random.random', return_value=1.0):
+        with patch('backend.services.random.random', return_value=1.0):
             tasks = [send_and_receive(i) for i in range(num_concurrent_requests)]
             await asyncio.gather(*tasks)
 

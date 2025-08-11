@@ -13,7 +13,7 @@ Perfect! Je hebt een solide basis en je wilt naar Iteratie 7 - multi-user broadc
 ### Step 7A.1: Create ConnectionManager Class (Test-First)
 **Instructie voor LLM:**
 ```
-Maak een nieuwe file `gcp_speech_to_speech_translation/connection_manager.py` met:
+Maak een nieuwe file `backend/connection_manager.py` met:
 
 1. Een `ConnectionManager` klasse met:
    - `__init__()` method die een thread-safe dictionary initialiseert

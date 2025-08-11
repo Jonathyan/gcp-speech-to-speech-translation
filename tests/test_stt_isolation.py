@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from unittest.mock import patch
 
-from gcp_speech_to_speech_translation.main import app
+from backend.main import app
 
 
 def test_stt_pass_through_with_mock_pipeline():
@@ -23,11 +23,11 @@ def test_stt_pass_through_with_mock_pipeline():
         real_audio_data = f.read()
     
     # Mock alleen Translation en TTS, STT wordt pass-through
-    with patch('gcp_speech_to_speech_translation.main.mock_speech_to_text') as mock_stt, \
-         patch('gcp_speech_to_speech_translation.services.random.random', return_value=1.0):
+    with patch('backend.main.mock_speech_to_text') as mock_stt, \
+         patch('backend.services.random.random', return_value=1.0):
         
         # Import pass-through function en patch STT
-        from gcp_speech_to_speech_translation.services import pass_through_speech_to_text
+        from backend.services import pass_through_speech_to_text
         mock_stt.side_effect = pass_through_speech_to_text
         
         with TestClient(app).websocket_connect("/ws") as websocket:
@@ -51,14 +51,14 @@ def test_mock_isolation_infrastructure():
     Test dat Translation en TTS mocks nog steeds correct werken
     wanneer STT in pass-through mode is.
     """
-    from gcp_speech_to_speech_translation.services import (
+    from backend.services import (
         pass_through_speech_to_text,
         mock_translation,
         mock_text_to_speech
     )
     
     # Patch random voor consistente resultaten
-    with patch('gcp_speech_to_speech_translation.services.random.random', return_value=1.0):
+    with patch('backend.services.random.random', return_value=1.0):
         # Test STT pass-through
         import asyncio
         

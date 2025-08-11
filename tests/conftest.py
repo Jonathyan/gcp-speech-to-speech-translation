@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch
-from gcp_speech_to_speech_translation.config import settings
+from backend.config import settings
 
 @pytest.fixture
 def fast_retry_settings():

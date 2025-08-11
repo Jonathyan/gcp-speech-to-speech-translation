@@ -18,7 +18,7 @@
     <h3>Manual Test Instructions:</h3>
     <ol>
         <li>Click "Start Uitzending" - should see retry logic</li>
-        <li>Start backend: <code>poetry run uvicorn gcp_speech_to_speech_translation.main:app --reload</code></li>
+        <li>Start backend: <code>poetry run uvicorn backend.main:app --reload</code></li>
         <li>Click "Start Uitzending" again - should connect successfully</li>
         <li>Click "Verbinding Verbreken" - should disconnect cleanly</li>
     </ol>

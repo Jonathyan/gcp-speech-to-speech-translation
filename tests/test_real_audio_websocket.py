@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from unittest.mock import patch
 
-from gcp_speech_to_speech_translation.main import app
+from backend.main import app
 
 
 def test_real_audio_file_websocket_integration():
@@ -23,7 +23,7 @@ def test_real_audio_file_websocket_integration():
         real_audio_data = f.read()
     
     # Patch random om consistente resultaten te krijgen
-    with patch('gcp_speech_to_speech_translation.services.random.random', return_value=1.0):
+    with patch('backend.services.random.random', return_value=1.0):
         with TestClient(app).websocket_connect("/ws") as websocket:
             # Verstuur het echte audio bestand als binaire data
             websocket.send_bytes(real_audio_data)

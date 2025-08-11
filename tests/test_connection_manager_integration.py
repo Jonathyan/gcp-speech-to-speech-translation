@@ -3,7 +3,7 @@ import asyncio
 import threading
 import time
 from unittest.mock import Mock, AsyncMock
-from gcp_speech_to_speech_translation.connection_manager import ConnectionManager
+from backend.connection_manager import ConnectionManager
 
 
 @pytest.fixture

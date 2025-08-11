@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, Mock, AsyncMock
-from gcp_speech_to_speech_translation.main import app
+from backend.main import app
 
 
 @pytest.fixture
@@ -14,8 +14,8 @@ def test_speaker_pipeline_execution(client):
     stream_id = "pipeline-test"
     audio_data = b"test_audio_data"
     
-    with patch('gcp_speech_to_speech_translation.main.process_pipeline', new_callable=AsyncMock) as mock_pipeline, \
-         patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager:
+    with patch('backend.main.process_pipeline', new_callable=AsyncMock) as mock_pipeline, \
+         patch('backend.main.connection_manager') as mock_manager:
         
         mock_pipeline.return_value = b"translated_audio"
         mock_manager.broadcast_to_stream = AsyncMock()
@@ -33,8 +33,8 @@ def test_speaker_broadcasts_to_listeners(client):
     audio_data = b"test_audio_data"
     translated_audio = b"translated_audio_output"
     
-    with patch('gcp_speech_to_speech_translation.main.process_pipeline', new_callable=AsyncMock) as mock_pipeline, \
-         patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager:
+    with patch('backend.main.process_pipeline', new_callable=AsyncMock) as mock_pipeline, \
+         patch('backend.main.connection_manager') as mock_manager:
         
         mock_pipeline.return_value = translated_audio
         mock_manager.broadcast_to_stream = AsyncMock()
@@ -51,8 +51,8 @@ def test_speaker_no_response_to_speaker(client):
     stream_id = "no-response-test"
     audio_data = b"test_audio_data"
     
-    with patch('gcp_speech_to_speech_translation.main.process_pipeline') as mock_pipeline, \
-         patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager:
+    with patch('backend.main.process_pipeline') as mock_pipeline, \
+         patch('backend.main.connection_manager') as mock_manager:
         
         mock_pipeline.return_value = b"translated_audio"
         
@@ -68,8 +68,8 @@ def test_speaker_pipeline_with_zero_listeners(client):
     stream_id = "zero-listeners-test"
     audio_data = b"test_audio_data"
     
-    with patch('gcp_speech_to_speech_translation.main.process_pipeline', new_callable=AsyncMock) as mock_pipeline, \
-         patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager:
+    with patch('backend.main.process_pipeline', new_callable=AsyncMock) as mock_pipeline, \
+         patch('backend.main.connection_manager') as mock_manager:
         
         mock_pipeline.return_value = b"translated_audio"
         mock_manager.broadcast_to_stream = AsyncMock()
@@ -88,9 +88,9 @@ def test_speaker_pipeline_error_handling(client):
     stream_id = "error-test"
     audio_data = b"test_audio_data"
     
-    with patch('gcp_speech_to_speech_translation.main.process_pipeline', new_callable=AsyncMock) as mock_pipeline, \
-         patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager, \
-         patch('gcp_speech_to_speech_translation.main.settings') as mock_settings:
+    with patch('backend.main.process_pipeline', new_callable=AsyncMock) as mock_pipeline, \
+         patch('backend.main.connection_manager') as mock_manager, \
+         patch('backend.main.settings') as mock_settings:
         
         mock_pipeline.side_effect = Exception("Pipeline failed")
         mock_settings.FALLBACK_AUDIO = b"fallback_audio"
@@ -109,9 +109,9 @@ def test_speaker_circuit_breaker_fallback(client):
     stream_id = "circuit-breaker-test"
     audio_data = b"test_audio_data"
     
-    with patch('gcp_speech_to_speech_translation.main.circuit_breaker') as mock_breaker, \
-         patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager, \
-         patch('gcp_speech_to_speech_translation.main.settings') as mock_settings:
+    with patch('backend.main.circuit_breaker') as mock_breaker, \
+         patch('backend.main.connection_manager') as mock_manager, \
+         patch('backend.main.settings') as mock_settings:
         
         mock_breaker.current_state = "open"
         mock_settings.FALLBACK_AUDIO = b"fallback_audio"
@@ -129,9 +129,9 @@ def test_speaker_resilience_patterns_preserved(client):
     stream_id = "resilience-test"
     audio_data = b"test_audio_data"
     
-    with patch('gcp_speech_to_speech_translation.main.process_pipeline', new_callable=AsyncMock) as mock_pipeline, \
-         patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager, \
-         patch('gcp_speech_to_speech_translation.main.circuit_breaker') as mock_breaker:
+    with patch('backend.main.process_pipeline', new_callable=AsyncMock) as mock_pipeline, \
+         patch('backend.main.connection_manager') as mock_manager, \
+         patch('backend.main.circuit_breaker') as mock_breaker:
         
         mock_pipeline.return_value = b"translated_audio"
         mock_breaker.current_state = "closed"
@@ -152,8 +152,8 @@ def test_speaker_multiple_audio_chunks(client):
     """Test speaker can send multiple audio chunks sequentially."""
     stream_id = "multiple-chunks-test"
     
-    with patch('gcp_speech_to_speech_translation.main.process_pipeline', new_callable=AsyncMock) as mock_pipeline, \
-         patch('gcp_speech_to_speech_translation.main.connection_manager') as mock_manager:
+    with patch('backend.main.process_pipeline', new_callable=AsyncMock) as mock_pipeline, \
+         patch('backend.main.connection_manager') as mock_manager:
         
         mock_pipeline.return_value = b"translated_audio"
         mock_manager.broadcast_to_stream = AsyncMock()
