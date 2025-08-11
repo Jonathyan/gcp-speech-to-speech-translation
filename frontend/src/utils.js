@@ -12,15 +12,45 @@ function isWebSocketSupported() {
 }
 
 /**
+ * Check if MediaRecorder is supported
+ * @returns {boolean} True if MediaRecorder is supported
+ */
+function isMediaRecorderSupported() {
+  return typeof MediaRecorder !== 'undefined';
+}
+
+/**
+ * Check if getUserMedia is supported
+ * @returns {boolean} True if getUserMedia is supported
+ */
+function isGetUserMediaSupported() {
+  return !!(typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+}
+
+/**
+ * Check audio support capabilities
+ * @returns {object} Audio support status
+ */
+function checkAudioSupport() {
+  return {
+    mediaRecorder: isMediaRecorderSupported(),
+    getUserMedia: isGetUserMediaSupported(),
+    webAudio: typeof AudioContext !== 'undefined' || typeof webkitAudioContext !== 'undefined'
+  };
+}
+
+/**
  * Check if browser supports required features
  * @returns {object} Feature support status
  */
 function checkBrowserSupport() {
+  const audioSupport = checkAudioSupport();
   return {
     webSocket: isWebSocketSupported(),
     localStorage: typeof Storage !== 'undefined',
     addEventListener: typeof document.addEventListener !== 'undefined',
-    querySelector: typeof document.querySelector !== 'undefined'
+    querySelector: typeof document.querySelector !== 'undefined',
+    ...audioSupport
   };
 }
 
@@ -29,11 +59,24 @@ function checkBrowserSupport() {
  */
 function showCompatibilityWarning() {
   const support = checkBrowserSupport();
+  const warnings = [];
   
   if (!support.webSocket) {
+    warnings.push('WebSocket wordt niet ondersteund door uw browser.');
+  }
+  
+  if (!support.getUserMedia) {
+    warnings.push('Microfoon toegang wordt niet ondersteund door uw browser.');
+  }
+  
+  if (!support.mediaRecorder) {
+    warnings.push('Audio opname wordt niet ondersteund door uw browser.');
+  }
+  
+  if (warnings.length > 0) {
     const warning = document.createElement('div');
     warning.style.cssText = 'background: #f8d7da; color: #721c24; padding: 10px; margin: 10px 0; border-radius: 5px;';
-    warning.textContent = 'WebSocket wordt niet ondersteund door uw browser. Upgrade naar een moderne browser.';
+    warning.innerHTML = `<strong>Browser Compatibiliteit:</strong><br>${warnings.join('<br>')}<br><em>Upgrade naar een moderne browser voor volledige functionaliteit.</em>`;
     document.body.insertBefore(warning, document.body.firstChild);
   }
 }
@@ -64,7 +107,10 @@ function logError(context, error) {
 // Export for modules and browser
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { 
-    isWebSocketSupported, 
+    isWebSocketSupported,
+    isMediaRecorderSupported,
+    isGetUserMediaSupported,
+    checkAudioSupport,
     checkBrowserSupport, 
     showCompatibilityWarning,
     debounce,
@@ -74,7 +120,10 @@ if (typeof module !== 'undefined' && module.exports) {
 
 if (typeof window !== 'undefined') {
   window.AppUtils = { 
-    isWebSocketSupported, 
+    isWebSocketSupported,
+    isMediaRecorderSupported,
+    isGetUserMediaSupported,
+    checkAudioSupport,
     checkBrowserSupport, 
     showCompatibilityWarning,
     debounce,

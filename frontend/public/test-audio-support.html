@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Support Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .support-item { padding: 10px; margin: 5px 0; border-radius: 5px; }
+        .supported { background: #d4edda; color: #155724; }
+        .not-supported { background: #f8d7da; color: #721c24; }
+        .test-button { background: #007bff; color: white; border: none; padding: 10px 20px; margin: 10px 5px; border-radius: 5px; cursor: pointer; }
+        .test-button:disabled { background: #ccc; cursor: not-allowed; }
+        #test-results { margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>🎤 Audio Support Test</h1>
+    
+    <h2>Browser Audio Capabilities</h2>
+    <div id="capabilities"></div>
+    
+    <h2>Manual Tests</h2>
+    <button id="test-microphone" class="test-button">Test Microphone Access</button>
+    <button id="test-recording" class="test-button" disabled>Test Audio Recording</button>
+    <button id="test-playback" class="test-button">Test Audio Playback</button>
+    
+    <div id="test-results"></div>
+    
+    <script src="../src/utils.js"></script>
+    <script>
+        // Display audio capabilities
+        function displayCapabilities() {
+            const support = window.AppUtils.checkAudioSupport();
+            const capabilitiesDiv = document.getElementById('capabilities');
+            
+            const capabilities = [
+                { name: 'MediaRecorder API', supported: support.mediaRecorder },
+                { name: 'getUserMedia API', supported: support.getUserMedia },
+                { name: 'Web Audio API', supported: support.webAudio },
+                { name: 'WebSocket', supported: window.AppUtils.isWebSocketSupported() }
+            ];
+            
+            capabilitiesDiv.innerHTML = capabilities.map(cap => 
+                `<div class="support-item ${cap.supported ? 'supported' : 'not-supported'}">
+                    ${cap.supported ? '✅' : '❌'} ${cap.name}
+                </div>`
+            ).join('');
+        }
+        
+        // Test microphone access
+        async function testMicrophone() {
+            const results = document.getElementById('test-results');
+            results.innerHTML = '<p>🎤 Requesting microphone access...</p>';
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                results.innerHTML = '<p class="supported">✅ Microphone access granted!</p>';
+                
+                // Enable recording test
+                document.getElementById('test-recording').disabled = false;
+                
+                // Stop the stream
+                stream.getTracks().forEach(track => track.stop());
+                
+            } catch (error) {
+                results.innerHTML = `<p class="not-supported">❌ Microphone access failed: ${error.message}</p>`;
+            }
+        }
+        
+        // Test audio recording
+        async function testRecording() {
+            const results = document.getElementById('test-results');
+            results.innerHTML = '<p>🔴 Testing audio recording...</p>';
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const mediaRecorder = new MediaRecorder(stream);
+                
+                const chunks = [];
+                mediaRecorder.ondataavailable = (event) => {
+                    chunks.push(event.data);
+                };
+                
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'audio/webm' });
+                    results.innerHTML = `<p class="supported">✅ Recording successful! Recorded ${blob.size} bytes</p>`;
+                    stream.getTracks().forEach(track => track.stop());
+                };
+                
+                mediaRecorder.start();
+                setTimeout(() => mediaRecorder.stop(), 2000);
+                
+            } catch (error) {
+                results.innerHTML = `<p class="not-supported">❌ Recording failed: ${error.message}</p>`;
+            }
+        }
+        
+        // Test audio playback
+        function testPlayback() {
+            const results = document.getElementById('test-results');
+            results.innerHTML = '<p>🔊 Testing audio playback...</p>';
+            
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+                
+                oscillator.start();
+                oscillator.stop(audioContext.currentTime + 0.5);
+                
+                results.innerHTML = '<p class="supported">✅ Audio playback test completed (440Hz tone)</p>';
+                
+            } catch (error) {
+                results.innerHTML = `<p class="not-supported">❌ Audio playback failed: ${error.message}</p>`;
+            }
+        }
+        
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            displayCapabilities();
+            window.AppUtils.showCompatibilityWarning();
+            
+            document.getElementById('test-microphone').addEventListener('click', testMicrophone);
+            document.getElementById('test-recording').addEventListener('click', testRecording);
+            document.getElementById('test-playback').addEventListener('click', testPlayback);
+        });
+    </script>
+</body>
+</html>

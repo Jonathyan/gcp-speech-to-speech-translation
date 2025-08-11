@@ -47,11 +47,32 @@ function joinListener() {
 }
 
 /**
+ * Handle test microphone button click
+ */
+async function testMicrophone() {
+  updateStatus('Microfoon toegang aanvragen...');
+  
+  const result = await window.AppAudio.requestMicrophoneAccess();
+  
+  if (result.success) {
+    updateStatus('✅ Microfoon toegang verkregen!');
+    // Stop the stream after 2 seconds
+    setTimeout(() => {
+      window.AppAudio.stopAudioStream(result.stream);
+      updateStatus('Microfoon test voltooid');
+    }, 2000);
+  } else {
+    updateStatus(`❌ Microfoon fout: ${result.error}`);
+  }
+}
+
+/**
  * Initialize UI event handlers
  */
 function initializeUI() {
   const startButton = document.getElementById('start-broadcast');
   const listenButton = document.getElementById('join-listener');
+  const testMicButton = document.getElementById('test-microphone');
   const disconnectButton = document.getElementById('disconnect');
   
   // Setup initial state
@@ -62,6 +83,7 @@ function initializeUI() {
   // Attach event handlers
   if (startButton) startButton.addEventListener('click', startBroadcast);
   if (listenButton) listenButton.addEventListener('click', joinListener);
+  if (testMicButton) testMicButton.addEventListener('click', testMicrophone);
   if (disconnectButton) {
     disconnectButton.addEventListener('click', window.AppConnection.disconnectWebSocket);
   }
@@ -69,9 +91,9 @@ function initializeUI() {
 
 // Export for modules and browser
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { updateStatus, enableButtons, startBroadcast, joinListener, initializeUI };
+  module.exports = { updateStatus, enableButtons, startBroadcast, joinListener, testMicrophone, initializeUI };
 }
 
 if (typeof window !== 'undefined') {
-  window.AppUI = { updateStatus, enableButtons, startBroadcast, joinListener, initializeUI };
+  window.AppUI = { updateStatus, enableButtons, startBroadcast, joinListener, testMicrophone, initializeUI };
 }
