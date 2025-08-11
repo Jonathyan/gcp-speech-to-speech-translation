@@ -2,6 +2,8 @@
 
 Real-time speech-to-speech translation service using Google Cloud APIs with broadcasting capabilities.
 
+![Alt tekst](UI-mock.png "Mockup of UI")
+
 ## 🎯 Current Status: **Iteration 8 Complete - Frontend Ready**
 
 ### ✅ **Backend Complete (Iterations 1-7)**
@@ -19,9 +21,6 @@ Real-time speech-to-speech translation service using Google Cloud APIs with broa
 - **Production build process** with minification
 - **Browser compatibility** checks and graceful degradation
 - **Comprehensive testing** with Jest (21 tests passing)
-
-![Alt tekst](UI-mock.png "Mockup of UI")
-
 
 ## 🏗️ Architecture Overview
 
