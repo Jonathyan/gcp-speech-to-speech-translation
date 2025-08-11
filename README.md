@@ -22,6 +22,8 @@ Real-time speech-to-speech translation service using Google Cloud APIs with broa
 
 ## 🏗️ Architecture Overview
 
+![Alt tekst](gcp-arch.png "Solution Architecture in GCP")
+
 ```
 ┌─────────────────┐                    ┌─────────────────────────────────┐
 │   Frontend      │ ◄─── WebSocket ───► │   FastAPI Server               │
