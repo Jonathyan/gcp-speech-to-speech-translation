@@ -4,59 +4,105 @@
  */
 
 /**
- * Request microphone access from user
- * @returns {Promise<{success: boolean, stream: MediaStream|null, error: string|undefined}>}
+ * Request microphone access from user with retry logic
+ * @param {number} maxRetries - Maximum retry attempts
+ * @returns {Promise<{success: boolean, stream: MediaStream|null, error: string|undefined, suggestion?: string}>}
  */
-async function requestMicrophoneAccess() {
-  try {
-    // Check if getUserMedia is supported
-    if (!navigator || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+async function requestMicrophoneAccess(maxRetries = 2) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      // Check if getUserMedia is supported
+      if (!navigator || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        return {
+          success: false,
+          stream: null,
+          error: 'Microfoon toegang wordt niet ondersteund door uw browser',
+          suggestion: 'Upgrade naar een moderne browser zoals Chrome, Firefox of Safari'
+        };
+      }
+      
+      // Get audio constraints from config with fallback
+      let constraints;
+      try {
+        constraints = window.AppConfig ? 
+          window.AppConfig.getAudioConstraints() : 
+          { audio: true };
+      } catch (configError) {
+        console.warn('Config error, using fallback constraints:', configError);
+        constraints = { audio: true };
+      }
+      
+      // Request microphone access
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      
       return {
-        success: false,
-        stream: null,
-        error: 'Microphone access not supported'
+        success: true,
+        stream: stream,
+        error: undefined
       };
+      
+    } catch (error) {
+      console.error(`Microphone access attempt ${attempt + 1}/${maxRetries + 1} failed:`, error);
+      
+      // If this is the last attempt, return user-friendly error
+      if (attempt === maxRetries) {
+        const friendlyError = createMicrophoneError(error);
+        return {
+          success: false,
+          stream: null,
+          ...friendlyError
+        };
+      }
+      
+      // Wait before retry (except for permission errors)
+      if (error.name !== 'NotAllowedError') {
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+      } else {
+        // Don't retry permission errors
+        const friendlyError = createMicrophoneError(error);
+        return {
+          success: false,
+          stream: null,
+          ...friendlyError
+        };
+      }
     }
-    
-    // Get audio constraints from config
-    const constraints = window.AppConfig ? 
-      window.AppConfig.getAudioConstraints() : 
-      { audio: true };
-    
-    // Request microphone access
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    
-    return {
-      success: true,
-      stream: stream,
-      error: undefined
-    };
-    
-  } catch (error) {
-    let errorMessage = 'Unknown error';
-    
-    switch (error.name) {
-      case 'NotAllowedError':
-        errorMessage = 'Permission denied';
-        break;
-      case 'NotFoundError':
-        errorMessage = 'No microphone found';
-        break;
-      case 'NotReadableError':
-        errorMessage = 'Microphone already in use';
-        break;
-      default:
-        errorMessage = error.message || 'Microphone access failed';
-    }
-    
-    console.error('Microphone access error:', error);
-    
-    return {
-      success: false,
-      stream: null,
-      error: errorMessage
-    };
   }
+}
+
+/**
+ * Create user-friendly microphone error messages
+ * @param {Error} error - Original error
+ * @returns {object} User-friendly error object
+ */
+function createMicrophoneError(error) {
+  const friendlyErrors = {
+    'NotAllowedError': {
+      error: 'Microfoon toegang werd geweigerd',
+      suggestion: 'Klik op het microfoon icoon in uw browser en sta toegang toe. Herlaad daarna de pagina.'
+    },
+    'NotFoundError': {
+      error: 'Geen microfoon gevonden',
+      suggestion: 'Controleer of uw microfoon is aangesloten en probeer opnieuw.'
+    },
+    'NotReadableError': {
+      error: 'Microfoon is al in gebruik',
+      suggestion: 'Sluit andere applicaties die uw microfoon gebruiken en probeer opnieuw.'
+    },
+    'OverconstrainedError': {
+      error: 'Microfoon voldoet niet aan de vereisten',
+      suggestion: 'Uw microfoon ondersteunt niet de gevraagde audio kwaliteit. Probeer een andere microfoon.'
+    },
+    'AbortError': {
+      error: 'Microfoon toegang werd onderbroken',
+      suggestion: 'Probeer opnieuw. Als het probleem aanhoudt, herstart uw browser.'
+    }
+  };
+  
+  return friendlyErrors[error.name] || {
+    error: 'Microfoon toegang mislukt',
+    suggestion: 'Controleer uw microfoon instellingen en probeer opnieuw. Als het probleem aanhoudt, herstart uw browser.'
+  };
 }
 
 /**
@@ -87,6 +133,9 @@ class AudioRecorder {
     this.isRecording = false;
     this.onDataCallback = options.onDataAvailable || null;
     this.onErrorCallback = options.onError || null;
+    this.retryCount = 0;
+    this.maxRetries = options.maxRetries || 3;
+    this.retryDelay = options.retryDelay || 1000;
     
     // Get configuration
     const chunkConfig = window.AppConfig ? 
@@ -141,6 +190,10 @@ class AudioRecorder {
   setupEventHandlers() {
     this.mediaRecorder.ondataavailable = (event) => {
       if (this.onDataCallback && event.data.size > 0) {
+        // Record performance metrics
+        if (window.AppDiagnostics) {
+          window.AppDiagnostics.performanceMetrics.recordAudioChunk(event.data.size, true);
+        }
         this.onDataCallback(event.data);
       }
     };
@@ -148,9 +201,74 @@ class AudioRecorder {
     this.mediaRecorder.onerror = (error) => {
       console.error('MediaRecorder error:', error);
       this.isRecording = false;
-      if (this.onErrorCallback) {
-        this.onErrorCallback(error);
+      
+      // Record performance metrics
+      if (window.AppDiagnostics) {
+        window.AppDiagnostics.performanceMetrics.recordAudioChunk(0, false);
       }
+      
+      // Attempt recovery
+      this.handleRecordingError(error);
+    };
+  }
+  
+  /**
+   * Handle recording errors with retry logic
+   * @param {Error} error - The recording error
+   */
+  handleRecordingError(error) {
+    if (this.retryCount < this.maxRetries) {
+      this.retryCount++;
+      console.warn(`Recording error, attempting retry ${this.retryCount}/${this.maxRetries}:`, error.message);
+      
+      setTimeout(() => {
+        try {
+          this.start();
+        } catch (retryError) {
+          console.error('Retry failed:', retryError);
+          if (this.onErrorCallback) {
+            this.onErrorCallback(this.createUserFriendlyError(error));
+          }
+        }
+      }, this.retryDelay * this.retryCount);
+    } else {
+      console.error('Max retries exceeded for recording');
+      if (this.onErrorCallback) {
+        this.onErrorCallback(this.createUserFriendlyError(error));
+      }
+    }
+  }
+  
+  /**
+   * Create user-friendly error messages
+   * @param {Error} error - Original error
+   * @returns {object} User-friendly error object
+   */
+  createUserFriendlyError(error) {
+    const friendlyErrors = {
+      'InvalidStateError': {
+        message: 'Opname kon niet worden gestart. Probeer opnieuw.',
+        suggestion: 'Controleer of uw microfoon niet door een andere applicatie wordt gebruikt.'
+      },
+      'NotSupportedError': {
+        message: 'Audio opname wordt niet ondersteund door uw browser.',
+        suggestion: 'Upgrade naar een moderne browser zoals Chrome, Firefox of Safari.'
+      },
+      'SecurityError': {
+        message: 'Microfoon toegang werd geweigerd.',
+        suggestion: 'Klik op het microfoon icoon in uw browser en sta toegang toe.'
+      }
+    };
+    
+    const friendly = friendlyErrors[error.name] || {
+      message: 'Er is een probleem opgetreden met de audio opname.',
+      suggestion: 'Herlaad de pagina en probeer opnieuw.'
+    };
+    
+    return {
+      ...friendly,
+      originalError: error.message,
+      errorCode: error.name
     };
   }
   
@@ -258,7 +376,8 @@ if (typeof module !== 'undefined' && module.exports) {
     stopAudioStream,
     AudioRecorder,
     convertAudioChunk,
-    validateAudioChunk
+    validateAudioChunk,
+    createMicrophoneError
   };
 }
 
@@ -268,6 +387,7 @@ if (typeof window !== 'undefined') {
     stopAudioStream,
     AudioRecorder,
     convertAudioChunk,
-    validateAudioChunk
+    validateAudioChunk,
+    createMicrophoneError
   };
 }

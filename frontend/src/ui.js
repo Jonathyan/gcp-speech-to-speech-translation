@@ -15,6 +15,99 @@ function updateStatus(message) {
 }
 
 /**
+ * Set loading state with visual feedback
+ * @param {boolean} loading - Whether to show loading state
+ * @param {string} message - Loading message
+ */
+function setLoadingState(loading, message = '') {
+  const statusDiv = document.getElementById('status');
+  const startButton = document.getElementById('start-broadcast');
+  
+  if (loading) {
+    if (statusDiv) {
+      statusDiv.innerHTML = `<span class="loading-spinner">⏳</span> ${message}`;
+      statusDiv.classList.add('loading');
+    }
+    if (startButton) startButton.disabled = true;
+  } else {
+    if (statusDiv) {
+      statusDiv.classList.remove('loading');
+    }
+    if (startButton) startButton.disabled = false;
+  }
+}
+
+/**
+ * Show error message with suggestion
+ * @param {string} error - Error message
+ * @param {string} suggestion - Recovery suggestion
+ */
+function showError(error, suggestion = '') {
+  const statusDiv = document.getElementById('status');
+  if (statusDiv) {
+    statusDiv.innerHTML = `❌ ${error}`;
+    statusDiv.classList.add('error');
+    
+    if (suggestion) {
+      setTimeout(() => {
+        statusDiv.innerHTML += `<br><small>💡 ${suggestion}</small>`;
+      }, 1000);
+    }
+    
+    // Clear error state after 10 seconds
+    setTimeout(() => {
+      statusDiv.classList.remove('error');
+      updateStatus('Ready');
+    }, 10000);
+  }
+}
+
+/**
+ * Show recording indicator with pulsing effect
+ * @param {boolean} recording - Whether recording is active
+ */
+function showRecordingIndicator(recording) {
+  let indicator = document.getElementById('recording-indicator');
+  
+  if (recording) {
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.id = 'recording-indicator';
+      indicator.innerHTML = '🔴';
+      indicator.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        font-size: 24px;
+        animation: pulse 1s infinite;
+        z-index: 1000;
+      `;
+      document.body.appendChild(indicator);
+      
+      // Add CSS animation if not exists
+      if (!document.getElementById('recording-styles')) {
+        const style = document.createElement('style');
+        style.id = 'recording-styles';
+        style.textContent = `
+          @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.1); }
+            100% { opacity: 1; transform: scale(1); }
+          }
+          .loading { color: #007bff; }
+          .error { color: #dc3545; }
+        `;
+        document.head.appendChild(style);
+      }
+    }
+  } else {
+    if (indicator) {
+      indicator.remove();
+    }
+  }
+}
+
+/**
  * Enable/disable buttons based on connection state
  * @param {boolean} enabled - Whether buttons should be enabled
  */
@@ -37,12 +130,14 @@ async function startBroadcast() {
     return;
   }
   
-  updateStatus('Microfoon toegang aanvragen...');
+  // Add loading state
+  setLoadingState(true, 'Microfoon toegang aanvragen...');
   
-  // Request microphone access
-  const micResult = await window.AppAudio.requestMicrophoneAccess();
+  // Request microphone access with retry
+  const micResult = await window.AppAudio.requestMicrophoneAccess(2);
   if (!micResult.success) {
-    updateStatus(`❌ Microfoon fout: ${micResult.error}`);
+    setLoadingState(false);
+    showError(micResult.error, micResult.suggestion);
     return;
   }
   
@@ -92,7 +187,9 @@ async function startBroadcast() {
       broadcastRecorder.start();
       isBroadcasting = true;
       
-      // Update UI
+      // Update UI with recording indicator
+      setLoadingState(false);
+      showRecordingIndicator(true);
       updateStatus(`🔴 Uitzending actief - Stream ID: ${currentStreamId}`);
       const startButton = document.getElementById('start-broadcast');
       if (startButton) startButton.textContent = 'Stop Uitzending';
@@ -124,6 +221,7 @@ function stopBroadcast() {
   currentStreamId = null;
   
   // Update UI
+  showRecordingIndicator(false);
   updateStatus('Uitzending gestopt');
   const startButton = document.getElementById('start-broadcast');
   if (startButton) startButton.textContent = 'Start Uitzending';
@@ -241,6 +339,45 @@ async function startRecording() {
 }
 
 /**
+ * Run diagnostics and display results
+ */
+async function runDiagnostics() {
+  setLoadingState(true, 'Diagnostiek uitvoeren...');
+  
+  try {
+    const diagnostics = await window.AppDiagnostics.runAudioDiagnostics();
+    const capabilities = window.AppDiagnostics.getBrowserCapabilities();
+    const debugInfo = window.AppDiagnostics.generateDebugInfo();
+    
+    setLoadingState(false);
+    
+    // Display results in console and status
+    console.group('🔧 Diagnostiek Resultaten');
+    console.log('Audio Diagnostiek:', diagnostics);
+    console.log('Browser Mogelijkheden:', capabilities);
+    console.log('Debug Informatie:', debugInfo);
+    console.groupEnd();
+    
+    // Show summary in status
+    const micStatus = diagnostics.microphoneAccess?.success ? '✅' : '❌';
+    const recStatus = diagnostics.recordingCapability?.success ? '✅' : '❌';
+    const formatCount = diagnostics.formatSupport?.length || 0;
+    
+    updateStatus(`Diagnostiek: Microfoon ${micStatus} | Opname ${recStatus} | Formaten: ${formatCount}`);
+    
+    if (debugInfo.recommendations.length > 0) {
+      setTimeout(() => {
+        showError('Aanbevelingen beschikbaar', 'Bekijk de console voor details');
+      }, 2000);
+    }
+    
+  } catch (error) {
+    setLoadingState(false);
+    showError('Diagnostiek mislukt', error.message);
+  }
+}
+
+/**
  * Initialize UI event handlers
  */
 function initializeUI() {
@@ -248,6 +385,7 @@ function initializeUI() {
   const listenButton = document.getElementById('join-listener');
   const testMicButton = document.getElementById('test-microphone');
   const startRecButton = document.getElementById('start-recording');
+  const diagnosticsButton = document.getElementById('run-diagnostics');
   const disconnectButton = document.getElementById('disconnect');
   
   // Setup initial state
@@ -260,6 +398,7 @@ function initializeUI() {
   if (listenButton) listenButton.addEventListener('click', joinListener);
   if (testMicButton) testMicButton.addEventListener('click', testMicrophone);
   if (startRecButton) startRecButton.addEventListener('click', startRecording);
+  if (diagnosticsButton) diagnosticsButton.addEventListener('click', runDiagnostics);
   if (disconnectButton) {
     disconnectButton.addEventListener('click', window.AppConnection.disconnectWebSocket);
   }
@@ -267,9 +406,9 @@ function initializeUI() {
 
 // Export for modules and browser
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { updateStatus, enableButtons, startBroadcast, stopBroadcast, joinListener, testMicrophone, startRecording, initializeUI };
+  module.exports = { updateStatus, enableButtons, startBroadcast, stopBroadcast, joinListener, testMicrophone, startRecording, initializeUI, setLoadingState, showError, showRecordingIndicator };
 }
 
 if (typeof window !== 'undefined') {
-  window.AppUI = { updateStatus, enableButtons, startBroadcast, stopBroadcast, joinListener, testMicrophone, startRecording, initializeUI };
+  window.AppUI = { updateStatus, enableButtons, startBroadcast, stopBroadcast, joinListener, testMicrophone, startRecording, initializeUI, setLoadingState, showError, showRecordingIndicator };
 }
