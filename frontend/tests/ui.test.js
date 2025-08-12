@@ -635,3 +635,662 @@ describe('Complete Listener Mode Implementation', () => {
     expect(listenButton.textContent).toBe('Luisteren');
   });
 });
+
+describe('UI Feedback & User Experience', () => {
+  let mockAudioPlayer;
+  
+  beforeEach(() => {
+    // Mock AudioPlayer with error callbacks
+    mockAudioPlayer = {
+      createAudioContext: jest.fn(),
+      onError: null,
+      onRecovery: null,
+      onQualityChange: null,
+      getHealthReport: jest.fn(() => ({
+        overall: 'Warning',
+        errors: { successRate: '85%' },
+        troubleshooting: ['Controleer internetverbinding']
+      })),
+      getPlaybackQuality: jest.fn(() => ({
+        overall: 'Good',
+        latency: 'Excellent',
+        recommendations: ['Audio kwaliteit is goed']
+      })),
+      getPerformanceMetrics: jest.fn(() => ({
+        avgLatency: 75,
+        droppedChunks: 2,
+        processedChunks: 18
+      }))
+    };
+    
+    // Mock window dependencies
+    global.window = {
+      AppConnection: {
+        audioPlayer: mockAudioPlayer,
+        disconnectWebSocket: jest.fn(),
+        getAudioStats: jest.fn(() => ({
+          chunksReceived: 20,
+          bytesReceived: 20000,
+          chunksProcessed: 18,
+          processingErrors: 2,
+          audioLevel: 65
+        }))
+      },
+      AppUtils: {
+        isWebAudioSupported: jest.fn(() => true)
+      },
+      AppConfig: {
+        getWebSocketURL: jest.fn(() => 'ws://localhost:8000')
+      },
+      prompt: jest.fn(() => 'test-stream')
+    };
+    
+    // Mock DOM elements
+    document.body.innerHTML = `
+      <div id="status">Ready</div>
+      <button id="start-broadcast">Start Uitzending</button>
+      <button id="join-listener">Luisteren</button>
+    `;
+    
+    jest.useFakeTimers();
+  });
+  
+  afterEach(() => {
+    // Clean up any indicators that might have been created
+    const indicators = [
+      'audio-loading-indicator',
+      'audio-quality-indicator', 
+      'audio-level-indicator',
+      'error-dialog',
+      'audio-gesture-overlay'
+    ];
+    indicators.forEach(id => {
+      const element = document.getElementById(id);
+      if (element) element.remove();
+    });
+    
+    delete global.window;
+    jest.useRealTimers();
+  });
+
+  test('showAudioLoading displays loading indicator with progress', () => {
+    const ui = require('../src/ui.js');
+    
+    ui.showAudioLoading(true, 'Audio decoderen...', 45);
+    
+    const indicator = document.getElementById('audio-loading-indicator');
+    expect(indicator).toBeTruthy();
+    expect(indicator.style.position).toBe('fixed');
+    expect(indicator.innerHTML).toContain('🎧 Audio decoderen...');
+    expect(indicator.innerHTML).toContain('width: 45%');
+    expect(indicator.innerHTML).toContain('45%');
+  });
+
+  test('showAudioLoading removes indicator when loading complete', () => {
+    const ui = require('../src/ui.js');
+    
+    // Show loading
+    ui.showAudioLoading(true);
+    expect(document.getElementById('audio-loading-indicator')).toBeTruthy();
+    
+    // Hide loading
+    ui.showAudioLoading(false);
+    expect(document.getElementById('audio-loading-indicator')).toBeFalsy();
+  });
+
+  test('showAudioQuality displays quality indicator with metrics', () => {
+    const ui = require('../src/ui.js');
+    
+    const metrics = { latency: '85ms', dropRate: '2%' };
+    ui.showAudioQuality('good', metrics);
+    
+    const indicator = document.getElementById('audio-quality-indicator');
+    expect(indicator).toBeTruthy();
+    expect(indicator.innerHTML).toContain('🔵 Audio: good');
+    expect(indicator.innerHTML).toContain('Latency: 85ms');
+    expect(indicator.innerHTML).toContain('Drops: 2%');
+    expect(indicator.style.borderLeft).toContain('#17a2b8');
+  });
+
+  test('showAudioQuality uses correct colors for different qualities', () => {
+    const ui = require('../src/ui.js');
+    
+    // Test excellent quality
+    ui.showAudioQuality('excellent');
+    let indicator = document.getElementById('audio-quality-indicator');
+    expect(indicator.innerHTML).toContain('🟢 Audio: excellent');
+    expect(indicator.style.borderLeft).toContain('#28a745');
+    
+    // Test poor quality
+    ui.showAudioQuality('poor');
+    indicator = document.getElementById('audio-quality-indicator');
+    expect(indicator.innerHTML).toContain('🔴 Audio: poor');
+    expect(indicator.style.borderLeft).toContain('#dc3545');
+  });
+
+  test('showError displays error with suggestion and recovery options', () => {
+    const ui = require('../src/ui.js');
+    
+    const mockRetry = jest.fn();
+    ui.showError('Verbinding mislukt', 'Controleer internetverbinding', {
+      recoverable: true,
+      onRetry: mockRetry,
+      clearTime: 5000
+    });
+    
+    const status = document.getElementById('status');
+    expect(status.innerHTML).toContain('❌ Verbinding mislukt');
+    expect(status.classList.contains('error')).toBe(true);
+    
+    // Fast-forward to show suggestion
+    jest.advanceTimersByTime(1000);
+    expect(status.innerHTML).toContain('💡 Controleer internetverbinding');
+    
+    // Fast-forward to show recovery button
+    jest.advanceTimersByTime(1000);
+    expect(status.innerHTML).toContain('Probeer Opnieuw');
+    
+    // Fast-forward to auto-clear
+    jest.advanceTimersByTime(5000);
+    expect(status.textContent).toBe('Ready');
+    expect(status.classList.contains('error')).toBe(false);
+  });
+
+  test('setupAudioErrorHandling configures AudioPlayer callbacks', () => {
+    const ui = require('../src/ui.js');
+    
+    ui.setupAudioErrorHandling();
+    
+    expect(mockAudioPlayer.onError).toBeInstanceOf(Function);
+    expect(mockAudioPlayer.onRecovery).toBeInstanceOf(Function);
+    expect(mockAudioPlayer.onQualityChange).toBeInstanceOf(Function);
+  });
+
+  test('AudioPlayer error callback shows user-friendly error', () => {
+    const ui = require('../src/ui.js');
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+    
+    ui.setupAudioErrorHandling();
+    
+    // Trigger error callback
+    mockAudioPlayer.onError({
+      operation: 'decode',
+      error: 'Netwerkfout tijdens audio verwerking',
+      suggestion: 'Controleer uw internetverbinding',
+      recoverable: true
+    });
+    
+    const status = document.getElementById('status');
+    expect(status.innerHTML).toContain('❌ Netwerkfout tijdens audio verwerking');
+    expect(consoleSpy).toHaveBeenCalledWith('Audio Player Error:', expect.any(Object));
+    
+    consoleSpy.mockRestore();
+  });
+
+  test('AudioPlayer recovery callback shows success message', () => {
+    const ui = require('../src/ui.js');
+    const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+    
+    ui.setupAudioErrorHandling();
+    
+    // Trigger recovery callback
+    mockAudioPlayer.onRecovery({
+      message: 'Audio systeem hersteld',
+      timestamp: new Date().toISOString()
+    });
+    
+    const status = document.getElementById('status');
+    expect(status.textContent).toContain('✅ Audio systeem hersteld');
+    expect(consoleSpy).toHaveBeenCalledWith('Audio Player Recovery:', expect.any(Object));
+    
+    consoleSpy.mockRestore();
+  });
+
+  test('AudioPlayer quality change callback updates quality indicator', () => {
+    const ui = require('../src/ui.js');
+    
+    ui.setupAudioErrorHandling();
+    
+    // Trigger quality change callback
+    mockAudioPlayer.onQualityChange('fair');
+    
+    const indicator = document.getElementById('audio-quality-indicator');
+    expect(indicator).toBeTruthy();
+    expect(indicator.innerHTML).toContain('🟡 Audio: fair');
+  });
+
+  test('showErrorDialog displays comprehensive error information', () => {
+    const ui = require('../src/ui.js');
+    
+    const errorInfo = {
+      error: 'AudioContext suspension error',
+      operation: 'context',
+      suggestion: 'Klik ergens op de pagina om audio te activeren',
+      diagnostics: { audioContextState: 'suspended', webAudioSupport: true },
+      recoverable: true
+    };
+    
+    ui.showErrorDialog(errorInfo);
+    
+    const dialog = document.getElementById('error-dialog');
+    expect(dialog).toBeTruthy();
+    expect(dialog.innerHTML).toContain('🚨 Audio Systeem Fout');
+    expect(dialog.innerHTML).toContain('AudioContext suspension error');
+    expect(dialog.innerHTML).toContain('Klik ergens op de pagina om audio te activeren');
+    expect(dialog.innerHTML).toContain('Diagnostische Informatie');
+    expect(dialog.innerHTML).toContain('Probeer Opnieuw');
+  });
+
+  test('closeErrorDialog removes error dialog', () => {
+    const ui = require('../src/ui.js');
+    
+    // Show dialog first
+    ui.showErrorDialog({
+      error: 'Test error',
+      operation: 'test',
+      suggestion: 'Test suggestion'
+    });
+    
+    expect(document.getElementById('error-dialog')).toBeTruthy();
+    
+    ui.closeErrorDialog();
+    expect(document.getElementById('error-dialog')).toBeFalsy();
+  });
+
+  test('handleErrorRecovery performs operation-specific recovery', () => {
+    const ui = require('../src/ui.js');
+    
+    // Mock location.reload
+    Object.defineProperty(window, 'location', {
+      value: { reload: jest.fn() },
+      writable: true
+    });
+    
+    // Test context recovery (should reload page)
+    ui.handleErrorRecovery('context');
+    expect(window.location.reload).toHaveBeenCalled();
+    
+    // Reset mock
+    window.location.reload.mockReset();
+    
+    // Test decode recovery
+    ui.handleErrorRecovery('decode');
+    const status = document.getElementById('status');
+    expect(status.textContent).toBe('Audio decodering herstarten...');
+    
+    // Test playback recovery
+    ui.handleErrorRecovery('playback');
+    expect(status.textContent).toBe('Audio afspelen herstarten...');
+  });
+
+  test('showAudioLevel displays audio level visualization', () => {
+    const ui = require('../src/ui.js');
+    
+    ui.showAudioLevel(75);
+    
+    const indicator = document.getElementById('audio-level-indicator');
+    expect(indicator).toBeTruthy();
+    expect(indicator.style.position).toBe('fixed');
+    expect(indicator.innerHTML).toContain('height: 75%');
+    expect(indicator.innerHTML).toContain('#ffc107'); // Yellow for 75%
+  });
+
+  test('showAudioLevel uses correct colors for different levels', () => {
+    const ui = require('../src/ui.js');
+    
+    // Test low level (green)
+    ui.showAudioLevel(30);
+    let indicator = document.getElementById('audio-level-indicator');
+    expect(indicator.innerHTML).toContain('#28a745');
+    
+    // Test high level (red)  
+    ui.showAudioLevel(85);
+    indicator = document.getElementById('audio-level-indicator');
+    expect(indicator.innerHTML).toContain('#dc3545');
+  });
+
+  test('hideAudioLevel removes audio level indicator', () => {
+    const ui = require('../src/ui.js');
+    
+    // Show level first
+    ui.showAudioLevel(50);
+    expect(document.getElementById('audio-level-indicator')).toBeTruthy();
+    
+    // Hide level
+    ui.hideAudioLevel();
+    expect(document.getElementById('audio-level-indicator')).toBeFalsy();
+  });
+
+  test('startEnhancedAudioMonitoring provides comprehensive status updates', () => {
+    const ui = require('../src/ui.js');
+    
+    // Set up listening state
+    ui.joinListener();
+    
+    jest.advanceTimersByTime(1000); // Complete connection
+    jest.advanceTimersByTime(2000); // Trigger monitoring update
+    
+    const status = document.getElementById('status');
+    expect(status.textContent).toContain('🎧 Luisteren - Stream: test-stream');
+    expect(status.textContent).toContain('Ontvangen: 20 chunks (20KB)');
+    expect(status.textContent).toContain('Fouten: 2');
+    
+    // Verify quality indicator is shown
+    expect(document.getElementById('audio-quality-indicator')).toBeTruthy();
+    
+    // Verify audio level is shown
+    expect(document.getElementById('audio-level-indicator')).toBeTruthy();
+  });
+
+  test('getAudioPlayerStatus returns comprehensive player information', () => {
+    const ui = require('../src/ui.js');
+    
+    const status = ui.getAudioPlayerStatus();
+    
+    expect(status.isStreaming).toBe(false);
+    expect(status.queueSize).toBe(0);
+    expect(status.isPlaying).toBe(false);
+    expect(status.quality).toBe('Good');
+    expect(status.health).toBe('Warning');
+    expect(status.metrics).toBeDefined();
+  });
+
+  test('enhanced monitoring adapts to different audio conditions', () => {
+    const ui = require('../src/ui.js');
+    
+    // Mock different audio statistics scenarios
+    window.AppConnection.getAudioStats
+      .mockReturnValueOnce({
+        chunksReceived: 0,
+        bytesReceived: 0,
+        chunksProcessed: 0,
+        processingErrors: 0
+      })
+      .mockReturnValueOnce({
+        chunksReceived: 100,
+        bytesReceived: 100000,
+        chunksProcessed: 95,
+        processingErrors: 5,
+        audioLevel: 90
+      });
+    
+    ui.joinListener();
+    jest.advanceTimersByTime(1000);
+    
+    // First update - no data
+    jest.advanceTimersByTime(1000);
+    let status = document.getElementById('status');
+    expect(status.textContent).toContain('🎧 Luisteren - Stream: test-stream');
+    
+    // Second update - lots of data
+    jest.advanceTimersByTime(1000);
+    status = document.getElementById('status');
+    expect(status.textContent).toContain('Ontvangen: 100 chunks (98KB)');
+    expect(status.textContent).toContain('Fouten: 5');
+  });
+
+  test('UI feedback handles multiple concurrent indicators', () => {
+    const ui = require('../src/ui.js');
+    
+    // Show multiple indicators simultaneously
+    ui.showAudioLoading(true, 'Loading...', 50);
+    ui.showAudioQuality('excellent', { latency: '25ms' });
+    ui.showAudioLevel(80);
+    
+    // Verify all indicators exist
+    expect(document.getElementById('audio-loading-indicator')).toBeTruthy();
+    expect(document.getElementById('audio-quality-indicator')).toBeTruthy();
+    expect(document.getElementById('audio-level-indicator')).toBeTruthy();
+    
+    // Hide all indicators
+    ui.showAudioLoading(false);
+    ui.hideAudioLevel();
+    
+    // Quality indicator should remain (not explicitly hidden)
+    expect(document.getElementById('audio-loading-indicator')).toBeFalsy();
+    expect(document.getElementById('audio-quality-indicator')).toBeTruthy();
+    expect(document.getElementById('audio-level-indicator')).toBeFalsy();
+  });
+});
+
+describe('Diagnostics & Recovery Capabilities', () => {
+  let mockDiagnostics;
+  
+  beforeEach(() => {
+    mockDiagnostics = {
+      runAudioDiagnostics: jest.fn(() => Promise.resolve({
+        microphoneAccess: { success: true },
+        recordingCapability: { success: true },
+        formatSupport: ['audio/webm', 'audio/mp4']
+      })),
+      getBrowserCapabilities: jest.fn(() => ({
+        webAudio: true,
+        mediaRecorder: true,
+        webSocket: true,
+        getUserMedia: true
+      })),
+      generateDebugInfo: jest.fn(() => ({
+        timestamp: Date.now(),
+        userAgent: 'test-agent',
+        recommendations: []
+      }))
+    };
+    
+    global.window = {
+      AppDiagnostics: mockDiagnostics,
+      AppConnection: {
+        audioPlayer: {
+          getHealthReport: jest.fn(() => ({
+            overall: 'Healthy',
+            diagnostics: { webAudioSupport: true },
+            troubleshooting: ['Systeem werkt normaal']
+          }))
+        }
+      }
+    };
+    
+    document.body.innerHTML = `
+      <div id="status">Ready</div>
+      <button id="run-diagnostics">Diagnostiek Uitvoeren</button>
+    `;
+    
+    jest.useFakeTimers();
+  });
+  
+  afterEach(() => {
+    delete global.window;
+    jest.useRealTimers();
+  });
+
+  test('runDiagnostics executes comprehensive system check', async () => {
+    const ui = require('../src/ui.js');
+    
+    const diagnosticsPromise = ui.runDiagnostics();
+    
+    // Verify loading state
+    const status = document.getElementById('status');
+    expect(status.textContent).toContain('⏳');
+    expect(status.textContent).toContain('Diagnostiek uitvoeren...');
+    
+    await diagnosticsPromise;
+    
+    // Verify all diagnostics methods called
+    expect(mockDiagnostics.runAudioDiagnostics).toHaveBeenCalled();
+    expect(mockDiagnostics.getBrowserCapabilities).toHaveBeenCalled();
+    expect(mockDiagnostics.generateDebugInfo).toHaveBeenCalled();
+    
+    // Verify results displayed
+    expect(status.textContent).toContain('Diagnostiek: Microfoon ✅');
+    expect(status.textContent).toContain('Opname ✅');
+    expect(status.textContent).toContain('Formaten: 2');
+  });
+
+  test('runDiagnostics handles diagnostic failures', async () => {
+    const ui = require('../src/ui.js');
+    
+    // Mock diagnostics that fail
+    mockDiagnostics.runAudioDiagnostics.mockRejectedValue(
+      new Error('Diagnostic system unavailable')
+    );
+    
+    await ui.runDiagnostics();
+    
+    const status = document.getElementById('status');
+    expect(status.innerHTML).toContain('❌ Diagnostiek mislukt');
+  });
+
+  test('runDiagnostics shows recommendations when available', async () => {
+    const ui = require('../src/ui.js');
+    
+    // Mock diagnostics with recommendations
+    mockDiagnostics.generateDebugInfo.mockReturnValue({
+      timestamp: Date.now(),
+      userAgent: 'test-agent',
+      recommendations: [
+        'Upgrade to Chrome for better audio support',
+        'Check microphone permissions'
+      ]
+    });
+    
+    await ui.runDiagnostics();
+    
+    // Should show recommendations available message
+    jest.advanceTimersByTime(2000);
+    
+    const status = document.getElementById('status');
+    expect(status.innerHTML).toContain('❌ Aanbevelingen beschikbaar');
+  });
+
+  test('runDiagnostics reports different component status correctly', async () => {
+    const ui = require('../src/ui.js');
+    
+    // Mock mixed success/failure results
+    mockDiagnostics.runAudioDiagnostics.mockResolvedValue({
+      microphoneAccess: { success: false },
+      recordingCapability: { success: true },
+      formatSupport: ['audio/webm']
+    });
+    
+    await ui.runDiagnostics();
+    
+    const status = document.getElementById('status');
+    expect(status.textContent).toContain('Diagnostiek: Microfoon ❌');
+    expect(status.textContent).toContain('Opname ✅');
+    expect(status.textContent).toContain('Formaten: 1');
+  });
+
+  test('comprehensive system health reporting works', () => {
+    const ui = require('../src/ui.js');
+    
+    // Setup AudioPlayer to return health report
+    const healthReport = ui.getAudioPlayerStatus();
+    
+    expect(healthReport.quality).toBeDefined();
+    expect(healthReport.health).toBeDefined();
+    expect(healthReport.metrics).toBeDefined();
+    
+    // Should include troubleshooting information
+    expect(window.AppConnection.audioPlayer.getHealthReport).toHaveBeenCalled();
+  });
+
+  test('diagnostics console output provides detailed information', async () => {
+    const ui = require('../src/ui.js');
+    
+    const consoleSpy = jest.spyOn(console, 'group').mockImplementation();
+    const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+    const consoleGroupEndSpy = jest.spyOn(console, 'groupEnd').mockImplementation();
+    
+    await ui.runDiagnostics();
+    
+    expect(consoleSpy).toHaveBeenCalledWith('🔧 Diagnostiek Resultaten');
+    expect(consoleLogSpy).toHaveBeenCalledWith('Audio Diagnostiek:', expect.any(Object));
+    expect(consoleLogSpy).toHaveBeenCalledWith('Browser Mogelijkheden:', expect.any(Object));
+    expect(consoleLogSpy).toHaveBeenCalledWith('Debug Informatie:', expect.any(Object));
+    expect(consoleGroupEndSpy).toHaveBeenCalled();
+    
+    consoleSpy.mockRestore();
+    consoleLogSpy.mockRestore();
+    consoleGroupEndSpy.mockRestore();
+  });
+
+  test('performance troubleshooting provides actionable insights', () => {
+    const ui = require('../src/ui.js');
+    
+    // Mock audio player with performance issues
+    const mockAudioPlayer = {
+      getHealthReport: jest.fn(() => ({
+        overall: 'Critical',
+        performance: {
+          droppedChunks: 25,
+          processedChunks: 75,
+          avgLatency: 250
+        },
+        troubleshooting: [
+          'Hoge drop rate - controleer internetverbinding',
+          'Hoge latency - sluit andere audio applicaties',
+          'Geheugendruk - herlaad de pagina'
+        ]
+      }))
+    };
+    
+    window.AppConnection.audioPlayer = mockAudioPlayer;
+    
+    const status = ui.getAudioPlayerStatus();
+    
+    expect(status.health).toBe('Critical');
+    expect(mockAudioPlayer.getHealthReport).toHaveBeenCalled();
+  });
+
+  test('error recovery integrates with diagnostic information', () => {
+    const ui = require('../src/ui.js');
+    
+    // Setup error with diagnostic context
+    const errorInfo = {
+      error: 'Memory pressure detected',
+      operation: 'decode',
+      suggestion: 'Herlaad de pagina om geheugen vrij te maken',
+      recoverable: true,
+      diagnostics: {
+        memoryUsage: '85%',
+        queueSize: 45,
+        bufferPoolSize: 15
+      }
+    };
+    
+    ui.showErrorDialog(errorInfo);
+    
+    const dialog = document.getElementById('error-dialog');
+    expect(dialog).toBeTruthy();
+    expect(dialog.innerHTML).toContain('Memory pressure detected');
+    expect(dialog.innerHTML).toContain('memoryUsage');
+    expect(dialog.innerHTML).toContain('queueSize');
+    expect(dialog.innerHTML).toContain('Probeer Opnieuw');
+  });
+
+  test('production-ready reliability monitoring works', () => {
+    const ui = require('../src/ui.js');
+    
+    // Mock enhanced monitoring with reliability metrics
+    window.AppConnection.getAudioStats = jest.fn(() => ({
+      chunksReceived: 1000,
+      bytesReceived: 1000000,
+      chunksProcessed: 950,
+      processingErrors: 50,
+      audioLevel: 45,
+      connectionQuality: 'Good',
+      uptime: 300000 // 5 minutes
+    }));
+    
+    ui.joinListener();
+    jest.advanceTimersByTime(1000);
+    jest.advanceTimersByTime(2000); // Trigger monitoring
+    
+    const status = document.getElementById('status');
+    expect(status.textContent).toContain('Ontvangen: 1000 chunks (977KB)');
+    expect(status.textContent).toContain('Fouten: 50');
+    
+    // Should show quality indicators for reliability
+    const qualityIndicator = document.getElementById('audio-quality-indicator');
+    expect(qualityIndicator).toBeTruthy();
+  });
+});

@@ -149,8 +149,9 @@ class AudioPlayer {
         
         // Reset consecutive failures on success
         if (this.consecutiveFailures > 0) {
+          const failureCount = this.consecutiveFailures;
           this.consecutiveFailures = 0;
-          this._notifyRecovery('decode');
+          this._notifyRecovery('decode', failureCount);
         }
         
         return audioBuffer;
@@ -170,8 +171,12 @@ class AudioPlayer {
             this._enterRecoveryMode();
           }
           
-          this._notifyError('decode', error);
-          throw this._createUserFriendlyError('decode', error);
+          const userFriendlyError = this._createUserFriendlyError('decode', error);
+          // Notify with user-friendly error but preserve original error context
+          const notifyError = { ...error };
+          notifyError.message = userFriendlyError.message;
+          this._notifyError('decode', notifyError);
+          throw userFriendlyError;
         }
         
         // Exponential backoff with jitter and adaptive delay
@@ -531,7 +536,9 @@ class AudioPlayer {
         // If still suspended, it likely needs a user gesture
         if (this.audioContext.state === 'suspended') {
           this._requestUserGesture();
-          throw new Error('AudioContext requires user interaction to resume');
+          const gestureError = new Error('AudioContext requires user interaction to resume');
+          gestureError.name = 'NotAllowedError';
+          throw gestureError;
         }
       } catch (error) {
         if (error.message.includes('user interaction')) {
@@ -959,12 +966,12 @@ class AudioPlayer {
    * @param {string} operation - Operation that recovered
    * @private
    */
-  _notifyRecovery(operation) {
+  _notifyRecovery(operation, failureCount = 0) {
     if (this.onRecovery) {
       try {
         this.onRecovery({
           operation,
-          message: `${operation} hersteld na ${this.consecutiveFailures} fouten`,
+          message: `${operation} hersteld na ${failureCount} fouten`,
           timestamp: new Date().toISOString()
         });
       } catch (callbackError) {

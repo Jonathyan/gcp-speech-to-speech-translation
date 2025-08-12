@@ -1021,3 +1021,350 @@ describe('Continuous Stream Playback', () => {
     expect(mockAudioContext.createBufferSource).not.toHaveBeenCalled();
   });
 });
+
+describe('Error Recovery & User Experience', () => {
+  let mockAudioContext;
+  let player;
+
+  beforeEach(() => {
+    const { AudioPlayer } = require('../src/audioPlayer.js');
+    
+    mockAudioContext = {
+      state: 'running',
+      currentTime: 0,
+      destination: {},
+      resume: jest.fn().mockResolvedValue(),
+      decodeAudioData: jest.fn(),
+      createBufferSource: jest.fn()
+    };
+    
+    global.AudioContext = jest.fn(() => mockAudioContext);
+    global.window = { AudioContext: global.AudioContext };
+    
+    // Create fresh mock element for each test
+    const mockElement = {
+      id: '',
+      style: { cssText: '' },
+      addEventListener: jest.fn(),
+      remove: jest.fn(),
+      innerHTML: ''
+    };
+    
+    // Create fresh mock functions for each test
+    const createElementMock = jest.fn(() => mockElement);
+    const appendChildMock = jest.fn();
+    
+    global.document = {
+      createElement: createElementMock,
+      body: { appendChild: appendChildMock }
+    };
+    
+    // Store references for tests
+    global.mockElement = mockElement;
+    global.mockCreateElement = createElementMock;
+    global.mockAppendChild = appendChildMock;
+    
+    player = new AudioPlayer();
+    player.createAudioContext();
+    
+    // Reset user gesture state for each test
+    player.userGestureRequested = false;
+  });
+
+  test('automatic retry for failed audio decoding works', async () => {
+    const mockAudioBuffer = { sampleRate: 44100, numberOfChannels: 2, duration: 1.0 };
+    
+    // Fail first two attempts, succeed on third
+    mockAudioContext.decodeAudioData
+      .mockRejectedValueOnce(new Error('Network error'))
+      .mockRejectedValueOnce(new Error('Temporary failure'))
+      .mockResolvedValueOnce(mockAudioBuffer);
+    
+    const arrayBuffer = new ArrayBuffer(1000);
+    const result = await player.decodeAudioChunk(arrayBuffer);
+    
+    expect(mockAudioContext.decodeAudioData).toHaveBeenCalledTimes(3);
+    expect(result).toBe(mockAudioBuffer);
+    expect(player.consecutiveFailures).toBe(0); // Reset on success
+  });
+
+  test('graceful handling of corrupted audio data', async () => {
+    // Mock decode that returns invalid buffer
+    const invalidBuffer = { sampleRate: 0, numberOfChannels: 0, duration: -1 };
+    mockAudioContext.decodeAudioData.mockResolvedValue(invalidBuffer);
+    
+    const arrayBuffer = new ArrayBuffer(1000);
+    
+    await expect(player.decodeAudioChunk(arrayBuffer))
+      .rejects.toThrow('Kan audio niet decoderen');
+    
+    expect(player.performanceMetrics.droppedChunks).toBe(1);
+  });
+
+  test('recovery from AudioContext suspension', async () => {
+    mockAudioContext.state = 'suspended';
+    mockAudioContext.resume.mockImplementation(() => {
+      // Simulate successful resume
+      mockAudioContext.state = 'running';
+      return Promise.resolve();
+    });
+    
+    const mockAudioBuffer = { sampleRate: 44100, numberOfChannels: 2, duration: 1.0 };
+    mockAudioContext.decodeAudioData.mockResolvedValue(mockAudioBuffer);
+    
+    const arrayBuffer = new ArrayBuffer(1000);
+    const result = await player.decodeAudioChunk(arrayBuffer);
+    
+    expect(mockAudioContext.resume).toHaveBeenCalled();
+    expect(result).toBe(mockAudioBuffer);
+  });
+
+  test('AudioContext suspension requires user gesture', async () => {
+    mockAudioContext.state = 'suspended';
+    mockAudioContext.resume.mockImplementation(() => {
+      // Context remains suspended, simulating need for user gesture
+      return Promise.resolve();
+    });
+    
+    const arrayBuffer = new ArrayBuffer(1000);
+    
+    await expect(player.decodeAudioChunk(arrayBuffer))
+      .rejects.toThrow('Audio systeem geblokkeerd - klik ergens op de pagina');
+    
+    expect(player.userGestureRequested).toBe(true);
+  });
+
+  test('user-friendly error reporting works', async () => {
+    const mockCallback = jest.fn();
+    player.onError = mockCallback;
+    
+    const networkError = new Error('Network failed');
+    networkError.name = 'NetworkError';
+    mockAudioContext.decodeAudioData.mockRejectedValue(networkError);
+    
+    const arrayBuffer = new ArrayBuffer(1000);
+    
+    await expect(player.decodeAudioChunk(arrayBuffer))
+      .rejects.toThrow('Netwerkfout tijdens audio verwerking');
+    
+    expect(mockCallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'decode',
+        error: 'Netwerkfout tijdens audio verwerking',
+        suggestion: 'Controleer uw internetverbinding en herlaad de pagina',
+        recoverable: true
+      })
+    );
+  });
+
+  test('recovery mode is activated after consecutive failures', async () => {
+    player.consecutiveFailures = 15; // Above threshold
+    
+    mockAudioContext.decodeAudioData.mockRejectedValue(new Error('Persistent failure'));
+    
+    const arrayBuffer = new ArrayBuffer(1000);
+    
+    await expect(player.decodeAudioChunk(arrayBuffer))
+      .rejects.toThrow();
+    
+    expect(player.recoveryMode).toBe(true);
+    expect(player.maxQueueSize).toBeLessThan(50); // Reduced from original
+  });
+
+  test('recovery mode exits automatically after timeout', () => {
+    jest.useFakeTimers();
+    
+    player._enterRecoveryMode();
+    expect(player.recoveryMode).toBe(true);
+    
+    // Advance time by 30 seconds
+    jest.advanceTimersByTime(30000);
+    
+    expect(player.recoveryMode).toBe(false);
+    expect(player.maxQueueSize).toBe(50); // Restored
+    
+    jest.useRealTimers();
+  });
+
+  test('error callback is called for critical errors', async () => {
+    const mockCallback = jest.fn();
+    player.onError = mockCallback;
+    
+    // Uninitialize context to trigger critical error
+    player.audioContext = null;
+    
+    const arrayBuffer = new ArrayBuffer(1000);
+    
+    await expect(player.decodeAudioChunk(arrayBuffer))
+      .rejects.toThrow();
+    
+    expect(mockCallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'context',
+        recoverable: false
+      })
+    );
+  });
+
+  test('recovery callback is called after successful recovery', async () => {
+    const mockRecoveryCallback = jest.fn();
+    player.onRecovery = mockRecoveryCallback;
+    
+    player.consecutiveFailures = 3;
+    
+    const mockAudioBuffer = { sampleRate: 44100, numberOfChannels: 2, duration: 1.0 };
+    mockAudioContext.decodeAudioData.mockResolvedValue(mockAudioBuffer);
+    
+    const arrayBuffer = new ArrayBuffer(1000);
+    await player.decodeAudioChunk(arrayBuffer);
+    
+    expect(mockRecoveryCallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'decode',
+        message: 'decode hersteld na 3 fouten'
+      })
+    );
+  });
+
+  test('user gesture overlay is created for suspended context', () => {
+    // Verify the reset worked
+    expect(player.userGestureRequested).toBe(false);
+    
+    player._requestUserGesture();
+    
+    expect(global.mockCreateElement).toHaveBeenCalledWith('div');
+    expect(global.mockElement.id).toBe('audio-gesture-overlay');
+    expect(global.mockElement.style.cssText).toContain('position: fixed');
+    expect(global.mockElement.innerHTML).toContain('Audio Activatie Vereist');
+    expect(global.mockAppendChild).toHaveBeenCalledWith(global.mockElement);
+    expect(player.userGestureRequested).toBe(true);
+  });
+
+  test('emergency cleanup is performed under memory pressure', () => {
+    // Setup memory pressure conditions
+    global.performance = {
+      memory: {
+        usedJSHeapSize: 90 * 1024 * 1024,
+        jsHeapSizeLimit: 100 * 1024 * 1024
+      }
+    };
+    
+    // Fill queue
+    const mockBuffer = { duration: 1.0, sampleRate: 44100, numberOfChannels: 2 };
+    for (let i = 0; i < player.maxQueueSize; i++) {
+      player.addToQueue(mockBuffer);
+    }
+    
+    // Add active sources
+    player.activeSources = [
+      { stop: jest.fn() },
+      { stop: jest.fn() },
+      { stop: jest.fn() }
+    ];
+    
+    const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+    
+    player._performEmergencyCleanup();
+    
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'AudioPlayer: Performing emergency cleanup due to memory pressure'
+    );
+    expect(player.audioQueue.length).toBeLessThanOrEqual(5);
+    expect(player.bufferPool.length).toBe(0);
+    expect(player.activeSources.length).toBe(0);
+    
+    consoleSpy.mockRestore();
+  });
+
+  test('quality change callback is called when quality changes', () => {
+    const mockCallback = jest.fn();
+    player.onQualityChange = mockCallback;
+    
+    player._updatePlaybackQuality('poor');
+    
+    expect(mockCallback).toHaveBeenCalledWith('poor');
+  });
+
+  test('playback quality assessment works correctly', () => {
+    // Set up performance metrics for "Fair" quality assessment
+    player.performanceMetrics.processedChunks = 60;
+    player.performanceMetrics.droppedChunks = 40; // 40% drop rate (severe)
+    player.performanceMetrics.latency = [120, 140, 160]; // Average 140ms (high latency)
+    
+    const quality = player.getPlaybackQuality();
+    
+    expect(quality.overall).toBe('Fair');
+    expect(quality.latency).toBe('Fair');
+    expect(quality.stability).toBe('Poor'); // Due to high drop rate
+    expect(quality.recommendations).toContain('Hoge drop rate - controleer internetverbinding');
+  });
+
+  test('health report provides comprehensive diagnostics', () => {
+    // Add some test data
+    player.performanceMetrics.processedChunks = 50;
+    player.performanceMetrics.droppedChunks = 5;
+    player.addToQueue({ duration: 1.0, sampleRate: 44100, numberOfChannels: 2 });
+    player.activeSources = [{}];
+    
+    const report = player.getHealthReport();
+    
+    expect(report.overall).toBeDefined();
+    expect(report.audioContext.state).toBe('running');
+    expect(report.playback.queueSize).toBe(1);
+    expect(report.performance.processedChunks).toBe(50);
+    expect(report.memory.queueMemory).toBeGreaterThan(0);
+    expect(report.errors.successRate).toBe('90.91%');
+    expect(report.diagnostics.webAudioSupport).toBe(true);
+    expect(report.troubleshooting).toBeInstanceOf(Array);
+  });
+
+  test('troubleshooting recommendations are context-aware', () => {
+    // Create various problem conditions
+    player.audioContext = null;
+    player.performanceMetrics.droppedChunks = 10;
+    player.consecutiveFailures = 8;
+    
+    const steps = player._getTroubleshootingSteps();
+    
+    expect(steps).toContain('Initialize AudioContext by calling createAudioContext()');
+    expect(steps).toContain('Hoge drop rate - controleer internetverbinding');
+    expect(steps).toContain('Herhaalde fouten - herstart audio systeem');
+  });
+
+  test('error history is maintained correctly', () => {
+    const error1 = new Error('First error');
+    error1.name = 'NetworkError';
+    const error2 = new Error('Second error');
+    error2.name = 'DataError';
+    
+    player._logError(error1, 'decode');
+    player._logError(error2, 'playback');
+    
+    const recentErrors = player._getRecentErrors();
+    
+    expect(recentErrors).toHaveLength(2);
+    expect(recentErrors[0].operation).toBe('decode');
+    expect(recentErrors[1].operation).toBe('playback');
+    expect(recentErrors[0].recoverable).toBe(true); // NetworkError is recoverable
+  });
+
+  test('callback errors do not break error handling', async () => {
+    // Set up callback that throws error
+    player.onError = jest.fn(() => {
+      throw new Error('Callback error');
+    });
+    
+    const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+    
+    // Trigger an error
+    const arrayBuffer = new ArrayBuffer(1000);
+    await expect(player.decodeAudioChunk(arrayBuffer))
+      .rejects.toThrow();
+    
+    // Error callback should have been attempted and warning logged
+    expect(player.onError).toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith('Error callback failed:', expect.any(Error));
+    
+    consoleSpy.mockRestore();
+  });
+});
