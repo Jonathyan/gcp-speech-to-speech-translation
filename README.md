@@ -156,14 +156,17 @@ Multiple independent streams can run simultaneously using different `stream_id` 
 
 ### Backend Tests
 ```bash
-# Run all tests
+# Run all tests (75 tests)
 poetry run pytest
 
 # Performance tests
-poetry run pytest tests/test_translation_performance.py -v -s
+poetry run pytest backend/tests/test_translation_performance.py -v -s
 
 # Integration tests
-poetry run pytest tests/test_real_tts_integration.py -v -s
+poetry run pytest backend/tests/test_real_tts_integration.py -v -s
+
+# Connection manager tests
+poetry run pytest backend/tests/test_connection_manager.py -v
 ```
 
 ### Frontend Tests
@@ -207,10 +210,11 @@ Edit `frontend/src/config.js` for:
 
 ```
 ├── backend/                            # Backend source
+│   ├── tests/                         # Backend tests (75 tests)
 │   ├── main.py                         # FastAPI application
 │   ├── connection_manager.py           # Broadcasting logic
-│   ├── pipeline.py                     # Audio processing
-│   └── health.py                       # Health monitoring
+│   ├── services.py                     # Audio processing pipeline
+│   └── config.py                       # Configuration management
 ├── frontend/                           # Frontend application
 │   ├── public/                         # Static HTML files
 │   ├── src/                           # JavaScript modules
@@ -221,7 +225,6 @@ Edit `frontend/src/config.js` for:
 │   │   └── ui.js                      # User interface & UX
 │   ├── tests/                         # Jest tests (33 tests)
 │   └── dist/                          # Production build
-├── tests/                             # Backend tests
 └── plan/                              # Development documentation
 ```
 

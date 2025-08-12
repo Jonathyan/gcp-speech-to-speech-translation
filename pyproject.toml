@@ -6,6 +6,12 @@
  readme = "README.md"
  packages = [{include = "backend"}]
 
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
  [tool.poetry.dependencies]
  python = "^3.9"
  fastapi = "^0.109.2"
