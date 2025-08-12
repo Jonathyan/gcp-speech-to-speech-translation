@@ -31,10 +31,102 @@ function enableButtons(enabled) {
 /**
  * Handle start broadcast button click
  */
-function startBroadcast() {
+async function startBroadcast() {
+  if (isBroadcasting) {
+    stopBroadcast();
+    return;
+  }
+  
+  updateStatus('Microfoon toegang aanvragen...');
+  
+  // Request microphone access
+  const micResult = await window.AppAudio.requestMicrophoneAccess();
+  if (!micResult.success) {
+    updateStatus(`❌ Microfoon fout: ${micResult.error}`);
+    return;
+  }
+  
+  broadcastStream = micResult.stream;
+  currentStreamId = window.AppConnection.generateStreamId();
+  
+  // Setup WebSocket connection
   updateStatus('Verbinden...');
   const url = window.AppConfig.getWebSocketURL();
-  window.AppConnection.connectWebSocket(url, 'broadcast');
+  window.AppConnection.connectWebSocket(url, 'broadcast', currentStreamId);
+  
+  // Wait for connection to be established
+  setTimeout(async () => {
+    const websocket = window.AppConnection.getCurrentWebSocket();
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+      updateStatus('❌ Verbinding mislukt');
+      window.AppAudio.stopAudioStream(broadcastStream);
+      return;
+    }
+    
+    try {
+      // Start audio recording
+      broadcastRecorder = new window.AppAudio.AudioRecorder(broadcastStream, {
+        onDataAvailable: async (data) => {
+          try {
+            const arrayBuffer = await window.AppAudio.convertAudioChunk(data);
+            const validation = window.AppAudio.validateAudioChunk(arrayBuffer);
+            
+            if (validation.isValid) {
+              const sendResult = window.AppConnection.sendAudioChunk(websocket, arrayBuffer);
+              if (sendResult.success) {
+                updateStatus(`🔴 Uitzending actief - ${validation.size} bytes verzonden`);
+              } else {
+                console.warn('Failed to send audio:', sendResult.error);
+              }
+            }
+          } catch (error) {
+            console.error('Audio processing error:', error);
+          }
+        },
+        onError: (error) => {
+          console.error('Recording error:', error);
+          stopBroadcast();
+        }
+      });
+      
+      broadcastRecorder.start();
+      isBroadcasting = true;
+      
+      // Update UI
+      updateStatus(`🔴 Uitzending actief - Stream ID: ${currentStreamId}`);
+      const startButton = document.getElementById('start-broadcast');
+      if (startButton) startButton.textContent = 'Stop Uitzending';
+      
+    } catch (error) {
+      updateStatus(`❌ Opname setup fout: ${error.message}`);
+      window.AppAudio.stopAudioStream(broadcastStream);
+    }
+  }, 1000);
+}
+
+/**
+ * Stop broadcast function
+ */
+function stopBroadcast() {
+  if (broadcastRecorder) {
+    broadcastRecorder.stop();
+    broadcastRecorder = null;
+  }
+  
+  if (broadcastStream) {
+    window.AppAudio.stopAudioStream(broadcastStream);
+    broadcastStream = null;
+  }
+  
+  window.AppConnection.disconnectWebSocket();
+  
+  isBroadcasting = false;
+  currentStreamId = null;
+  
+  // Update UI
+  updateStatus('Uitzending gestopt');
+  const startButton = document.getElementById('start-broadcast');
+  if (startButton) startButton.textContent = 'Start Uitzending';
 }
 
 /**
@@ -43,12 +135,17 @@ function startBroadcast() {
 function joinListener() {
   updateStatus('Verbinden als luisteraar...');
   const url = window.AppConfig.getWebSocketURL();
-  window.AppConnection.connectWebSocket(url, 'listener');
+  const streamId = prompt('Voer stream ID in (of laat leeg voor test-stream):', 'test-stream');
+  window.AppConnection.connectWebSocket(url, 'listener', streamId || 'test-stream');
 }
 
 // Global recording state
 let currentRecorder = null;
 let recordingStream = null;
+let broadcastRecorder = null;
+let broadcastStream = null;
+let currentStreamId = null;
+let isBroadcasting = false;
 
 /**
  * Handle test microphone button click
@@ -106,6 +203,15 @@ async function startRecording() {
             if (validation.isValid) {
               updateStatus(`🔴 Opname actief - ${validation.size} bytes (geldig)`);
               console.log('Valid audio chunk:', validation.size, 'bytes');
+              
+              // Send audio chunk via WebSocket if connected
+              const websocket = window.AppConnection.getCurrentWebSocket();
+              if (websocket) {
+                const sendResult = window.AppConnection.sendAudioChunk(websocket, arrayBuffer);
+                if (!sendResult.success) {
+                  console.warn('Failed to send audio chunk:', sendResult.error);
+                }
+              }
             } else {
               updateStatus(`⚠️ Opname - ${validation.error}`);
               console.warn('Invalid audio chunk:', validation.error);
@@ -161,9 +267,9 @@ function initializeUI() {
 
 // Export for modules and browser
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { updateStatus, enableButtons, startBroadcast, joinListener, testMicrophone, startRecording, initializeUI };
+  module.exports = { updateStatus, enableButtons, startBroadcast, stopBroadcast, joinListener, testMicrophone, startRecording, initializeUI };
 }
 
 if (typeof window !== 'undefined') {
-  window.AppUI = { updateStatus, enableButtons, startBroadcast, joinListener, testMicrophone, startRecording, initializeUI };
+  window.AppUI = { updateStatus, enableButtons, startBroadcast, stopBroadcast, joinListener, testMicrophone, startRecording, initializeUI };
 }
