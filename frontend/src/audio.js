@@ -18,8 +18,13 @@ async function requestMicrophoneAccess() {
       };
     }
     
+    // Get audio constraints from config
+    const constraints = window.AppConfig ? 
+      window.AppConfig.getAudioConstraints() : 
+      { audio: true };
+    
     // Request microphone access
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
     
     return {
       success: true,
@@ -83,9 +88,14 @@ class AudioRecorder {
     this.onDataCallback = options.onDataAvailable || null;
     this.onErrorCallback = options.onError || null;
     
+    // Get configuration
+    const chunkConfig = window.AppConfig ? 
+      window.AppConfig.getAudioChunkConfig() : 
+      { intervalMs: 250 };
+    
     // Determine best audio format
     const mimeType = options.mimeType || this.getBestAudioFormat();
-    const timeslice = options.timeslice || 250;
+    const timeslice = options.timeslice || chunkConfig.intervalMs;
     
     // Create MediaRecorder
     this.mediaRecorder = new MediaRecorder(stream, {
@@ -104,6 +114,16 @@ class AudioRecorder {
    * @returns {string} MIME type
    */
   getBestAudioFormat() {
+    // Use config if available
+    if (window.AppConfig && window.AppConfig.getBestAudioFormat) {
+      try {
+        return window.AppConfig.getBestAudioFormat();
+      } catch (error) {
+        console.warn('Config audio format detection failed, using fallback');
+      }
+    }
+    
+    // Fallback to original logic
     const formats = ['audio/webm', 'audio/mp4', 'audio/wav'];
     
     for (const format of formats) {
@@ -201,7 +221,12 @@ function validateAudioChunk(arrayBuffer) {
   
   const size = arrayBuffer.byteLength;
   const minSize = 100; // 100 bytes minimum
-  const maxSize = 100 * 1024; // 100KB maximum
+  
+  // Get max size from config
+  const chunkConfig = window.AppConfig ? 
+    window.AppConfig.getAudioChunkConfig() : 
+    { maxSize: 100 * 1024 };
+  const maxSize = chunkConfig.maxSize;
   
   if (size < minSize) {
     return {
