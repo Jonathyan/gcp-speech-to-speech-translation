@@ -2,7 +2,7 @@
 
 Real-time speech-to-speech translation service using Google Cloud APIs with broadcasting capabilities.
 
-![Alt tekst](UI-mock.png "Mockup of UI")
+![Alt tekst](frontend-mock.png "Mockup of UI")
 
 ## 🎯 Current Status: **Production Ready - All Iterations Complete**
 
