@@ -5,10 +5,11 @@
 ## ✨ Features
 
 - **Real-time Audio Streaming** - 250ms chunks via WebSocket
-- **Production Audio Quality** - 16kHz mono with noise reduction
-- **Automatic Error Recovery** - Retry logic with user-friendly messages
-- **Visual Recording Feedback** - Pulsing indicator and real-time status
-- **Comprehensive Diagnostics** - Browser capability testing
+- **Production Audio Playback** - Web Audio API with queue management and memory optimization
+- **Advanced Error Recovery** - Circuit breaker patterns with automatic recovery mode
+- **User Experience Excellence** - Dutch error messages, progress indicators, quality monitoring
+- **Audio System Management** - AudioContext suspension handling and user gesture prompts
+- **Comprehensive Diagnostics** - System health reports and troubleshooting recommendations
 - **Multi-browser Support** - Automatic format detection and fallback
 
 ## 🚀 Quick Start
@@ -41,11 +42,10 @@ frontend/
 ├── src/              # Source modules
 │   ├── config.js     # Production audio configuration
 │   ├── audio.js      # Audio recording & processing
+│   ├── audioPlayer.js# Audio playback & error recovery
 │   ├── connection.js # WebSocket streaming
-│   ├── ui.js         # User interface & UX
-│   ├── diagnostics.js# System diagnostics
-│   ├── utils.js      # Browser compatibility
-│   └── app.js        # Application entry point
+│   ├── ui.js         # User interface & diagnostics
+│   └── utils.js      # Browser compatibility & utilities
 ├── tests/            # Comprehensive test suite
 ├── dist/             # Production build output
 └── build.js          # Build script
@@ -61,10 +61,12 @@ frontend/
 - **Diagnostiek** - Run comprehensive system diagnostics
 
 ### Visual Feedback
-- **Loading States** - Spinner during microphone access
-- **Recording Indicator** - Pulsing red dot during active recording
-- **Error Messages** - User-friendly Dutch messages with suggestions
-- **Real-time Status** - Chunk sizes, validation, and stream info
+- **Audio Loading Indicators** - Progress bars with detailed loading messages
+- **Quality Monitoring** - Real-time audio quality assessment with color coding
+- **Audio Level Visualization** - Live audio level meter with dynamic colors
+- **Error Dialogs** - Comprehensive error information with diagnostic data
+- **Recovery Messages** - Success indicators when system recovers from errors
+- **Real-time Status** - Stream info, chunk processing, and performance metrics
 
 ## ⚙️ Configuration
 
@@ -92,16 +94,20 @@ AUDIO: {
 
 ## 🧪 Testing
 
-### Automated Tests (33 tests)
+### Automated Tests (210 tests with production coverage)
 ```bash
 # Run all tests
 npm test
 
+# Error Recovery & User Experience (17 tests)
+npm test -- --testNamePattern="Error Recovery & User Experience"
+
 # Specific test suites
-npm test tests/audio.test.js      # Audio functionality
-npm test tests/config.test.js     # Configuration
-npm test tests/diagnostics.test.js # System diagnostics
-npm test tests/connection.test.js  # WebSocket streaming
+npm test tests/audioPlayer.test.js  # Audio playback & error recovery
+npm test tests/ui.test.js           # User interface & diagnostics
+npm test tests/connection.test.js   # WebSocket streaming
+npm test tests/utils.test.js        # Utility functions
+npm test tests/audio.test.js        # Audio capture & processing
 ```
 
 ### Manual Testing Procedures
@@ -111,34 +117,48 @@ npm test tests/connection.test.js  # WebSocket streaming
 4. **Diagnostics Test** - Click "Diagnostiek"
 5. **Error Recovery** - Deny microphone access
 
-## 🔧 Error Handling & Recovery
+## 🛡️ Advanced Error Recovery & Circuit Breaker
 
-### Automatic Recovery
-- **Microphone Access** - 3 retry attempts with exponential backoff
-- **MediaRecorder Errors** - Automatic restart with retry logic
-- **WebSocket Failures** - Connection retry with rate limiting
-- **Format Fallback** - Automatic browser-specific format selection
+### Production-Ready Error Recovery
+- **Circuit Breaker Patterns** - Automatic recovery mode after 10+ consecutive failures
+- **Exponential Backoff with Jitter** - Smart retry logic with adaptive delays
+- **Memory Pressure Detection** - Emergency cleanup when approaching browser limits
+- **AudioContext Suspension Recovery** - User gesture prompts for audio activation
+- **Quality-Based Adaptive Behavior** - System adjusts based on real-time performance
 
-### User-Friendly Messages (Dutch)
-- **Permission Denied** - "Microfoon toegang werd geweigerd"
-- **No Microphone** - "Geen microfoon gevonden"
-- **Browser Unsupported** - "Upgrade naar een moderne browser"
-- **Recovery Suggestions** - Contextual help for each error type
+### User Experience Excellence (Dutch)
+- **Context-Aware Error Messages** - Specific suggestions based on error type:
+  - **Network Errors** - "Controleer uw internetverbinding en herlaad de pagina"
+  - **Audio Context Issues** - "Audio systeem geblokkeerd - klik ergens op de pagina"
+  - **Memory Pressure** - "Herlaad de pagina om geheugen vrij te maken"
+- **Progressive Error Dialogs** - Comprehensive diagnostic information with recovery options
+- **Success Recovery Messages** - "✅ Audio systeem hersteld" notifications
 
 ## 📊 Diagnostics & Performance
 
-### System Diagnostics
-- **Browser Capabilities** - Feature detection and compatibility
-- **Audio System Test** - Microphone and recording capability
-- **Performance Metrics** - Real-time chunk and WebSocket monitoring
-- **Debug Information** - Comprehensive troubleshooting data
+### Comprehensive System Health Monitoring
+- **Audio Player Health Reports** - Queue size, memory usage, success rates
+- **Real-time Quality Assessment** - Latency, stability, and performance metrics
+- **Browser Capability Detection** - Web Audio API, MediaRecorder, WebSocket support
+- **Performance Troubleshooting** - Context-aware recommendations based on system state
+- **Memory Usage Analysis** - Buffer pool monitoring and memory pressure detection
 
-### Performance Monitoring
+### Advanced Performance Metrics
 ```javascript
-// Real-time metrics
-audioChunks: { total, successful, failed, averageSize }
-webSocket: { connects, disconnects, messagesSent, errors }
-timing: { microphoneAccessTime, connectionTime, firstChunkTime }
+// AudioPlayer Performance Metrics
+{
+  overall: 'Good',                    // Quality assessment
+  audioContext: { state: 'running' },
+  playback: { queueSize: 3, isPlaying: true },
+  performance: { 
+    processedChunks: 150, 
+    droppedChunks: 2,
+    avgLatency: 75 
+  },
+  memory: { queueMemory: '2.1MB' },
+  errors: { successRate: '98.67%' },
+  troubleshooting: ['Systeem werkt normaal']
+}
 ```
 
 ## 🌐 Browser Support
@@ -201,27 +221,29 @@ Click "Diagnostiek" button for:
 ### Modular Design
 - **config.js** - Production audio configuration & format detection
 - **audio.js** - MediaRecorder integration with error recovery
-- **connection.js** - WebSocket streaming with rate limiting
-- **ui.js** - User experience with loading states & visual feedback
-- **diagnostics.js** - System analysis & performance monitoring
+- **audioPlayer.js** - Web Audio API with circuit breaker patterns and memory optimization
+- **connection.js** - WebSocket streaming with AudioPlayer integration
+- **ui.js** - User experience with comprehensive error handling and diagnostics
 - **utils.js** - Browser compatibility & utility functions
 
 ### Key Technologies
+- **Web Audio API** - Advanced audio playback with AudioContext management
 - **MediaRecorder API** - Audio capture and processing
 - **WebSocket** - Real-time binary data streaming
 - **getUserMedia** - Microphone access with constraints
-- **FileReader** - Blob to ArrayBuffer conversion
-- **Performance API** - Metrics collection and monitoring
+- **Performance API** - Memory monitoring and metrics collection
+- **Circuit Breaker Pattern** - Resilient error recovery architecture
 
 ## 📈 Production Ready
 
-✅ **Audio Quality** - 16kHz mono with noise reduction  
-✅ **Error Recovery** - Comprehensive retry mechanisms  
-✅ **User Experience** - Loading states and visual feedback  
-✅ **Diagnostics** - Complete system analysis  
-✅ **Performance** - Real-time monitoring and metrics  
-✅ **Browser Support** - Multi-browser compatibility  
-✅ **Test Coverage** - 88% test success rate  
-✅ **Documentation** - Complete setup and troubleshooting guides  
+✅ **Audio Streaming Pipeline** - Real-time 250ms chunks with WebSocket streaming  
+✅ **Audio Playback System** - Web Audio API with queue management and memory optimization  
+✅ **Circuit Breaker Resilience** - Automatic recovery mode with exponential backoff  
+✅ **User Experience Excellence** - Dutch error messages with actionable suggestions  
+✅ **Comprehensive Diagnostics** - System health reports and troubleshooting  
+✅ **Performance Monitoring** - Real-time quality assessment and metrics  
+✅ **Browser Compatibility** - Multi-browser support with graceful fallbacks  
+✅ **Test Coverage** - 210 tests with production-ready error recovery coverage  
+✅ **Memory Management** - Buffer pooling and emergency cleanup mechanisms  
 
-Ready for production deployment with enterprise-grade reliability and user experience.
+Ready for production deployment with enterprise-grade reliability, comprehensive error recovery, and exceptional user experience.
