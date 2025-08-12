@@ -24,10 +24,20 @@
     <button id="test-microphone" class="test-button">Test Microphone Access</button>
     <button id="test-recording" class="test-button" disabled>Test Audio Recording</button>
     <button id="test-playback" class="test-button">Test Audio Playback</button>
+    <button id="test-audio-context" class="test-button">Test Audio Context</button>
+    <button id="test-audio-decoding" class="test-button">Test Audio Decoding</button>
+    <button id="test-audio-queue" class="test-button">Test Audio Queue</button>
+    <button id="test-basic-playback" class="test-button">Test Basic Playback</button>
+    <button id="test-stream-playback" class="test-button">Test Stream Playback</button>
+    <button id="test-websocket-audio" class="test-button">Test WebSocket Audio</button>
+    <button id="test-audio-performance" class="test-button">Test Audio Performance</button>
+    <button id="test-performance-load" class="test-button">Test Performance Load</button>
     
     <div id="test-results"></div>
     
     <script src="../src/utils.js"></script>
+    <script src="../src/audioPlayer.js"></script>
+    <script src="../src/connection.js"></script>
     <script>
         // Display audio capabilities
         function displayCapabilities() {
@@ -122,6 +132,461 @@
             }
         }
         
+        // Test AudioContext creation
+        function testAudioContext() {
+            const results = document.getElementById('test-results');
+            results.innerHTML = '<p>🎧 Testing AudioContext creation...</p>';
+            
+            try {
+                // Load AudioPlayer if available
+                if (typeof AudioPlayer !== 'undefined') {
+                    const player = new AudioPlayer();
+                    const context = player.createAudioContext();
+                    
+                    results.innerHTML = `<p class="supported">✅ AudioContext created successfully! State: ${context.state}</p>`;
+                } else {
+                    // Fallback to direct AudioContext creation
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    results.innerHTML = `<p class="supported">✅ AudioContext created directly! State: ${audioContext.state}</p>`;
+                }
+                
+            } catch (error) {
+                results.innerHTML = `<p class="not-supported">❌ AudioContext creation failed: ${error.message}</p>`;
+            }
+        }
+        
+        // Test audio chunk decoding
+        async function testAudioDecoding() {
+            const results = document.getElementById('test-results');
+            results.innerHTML = '<p>🔊 Testing audio chunk decoding...</p>';
+            
+            try {
+                if (typeof AudioPlayer === 'undefined') {
+                    results.innerHTML = '<p class="not-supported">❌ AudioPlayer not available</p>';
+                    return;
+                }
+                
+                const player = new AudioPlayer();
+                player.createAudioContext();
+                
+                // Create test audio data (simple sine wave)
+                const sampleRate = 44100;
+                const duration = 0.1; // 100ms
+                const samples = sampleRate * duration;
+                const buffer = new ArrayBuffer(samples * 4); // 32-bit float
+                const view = new Float32Array(buffer);
+                
+                // Generate sine wave
+                for (let i = 0; i < samples; i++) {
+                    view[i] = Math.sin(2 * Math.PI * 440 * i / sampleRate) * 0.1;
+                }
+                
+                // Test validation with mock buffer
+                const mockBuffer = {
+                    sampleRate: 44100,
+                    numberOfChannels: 1,
+                    duration: 0.1
+                };
+                
+                const validation = player.validateAudioBuffer(mockBuffer);
+                
+                if (validation.valid) {
+                    results.innerHTML = '<p class="supported">✅ Audio validation successful!</p>';
+                } else {
+                    results.innerHTML = `<p class="not-supported">❌ Audio validation failed: ${validation.errors.join(', ')}</p>`;
+                }
+                
+            } catch (error) {
+                results.innerHTML = `<p class="not-supported">❌ Audio decoding test failed: ${error.message}</p>`;
+            }
+        }
+        
+        // Test audio queue management
+        function testAudioQueue() {
+            const results = document.getElementById('test-results');
+            results.innerHTML = '<p>📋 Testing audio queue management...</p>';
+            
+            try {
+                if (typeof AudioPlayer === 'undefined') {
+                    results.innerHTML = '<p class="not-supported">❌ AudioPlayer not available</p>';
+                    return;
+                }
+                
+                const player = new AudioPlayer();
+                
+                // Create mock audio buffers
+                const buffer1 = { duration: 1.0, sampleRate: 44100, numberOfChannels: 2 };
+                const buffer2 = { duration: 1.5, sampleRate: 44100, numberOfChannels: 2 };
+                const buffer3 = { duration: 0.5, sampleRate: 44100, numberOfChannels: 2 };
+                
+                // Test queue operations
+                let status = [];
+                
+                // Initial state
+                status.push(`Initial queue size: ${player.getQueueSize()}`);
+                status.push(`Initial queue duration: ${player.getQueueDuration()}s`);
+                
+                // Add buffers
+                player.addToQueue(buffer1);
+                player.addToQueue(buffer2);
+                player.addToQueue(buffer3);
+                
+                status.push(`After adding 3 buffers: ${player.getQueueSize()} items`);
+                status.push(`Total duration: ${player.getQueueDuration()}s`);
+                
+                // Remove one
+                const removed = player.getNextFromQueue();
+                status.push(`After removing 1 buffer: ${player.getQueueSize()} items`);
+                status.push(`Remaining duration: ${player.getQueueDuration()}s`);
+                
+                // Clear queue
+                player.clearQueue();
+                status.push(`After clearing: ${player.getQueueSize()} items`);
+                
+                results.innerHTML = `<p class="supported">✅ Audio queue test successful!</p><pre>${status.join('\n')}</pre>`;
+                
+            } catch (error) {
+                results.innerHTML = `<p class="not-supported">❌ Audio queue test failed: ${error.message}</p>`;
+            }
+        }
+        
+        // Test basic audio playback
+        async function testBasicPlayback() {
+            const results = document.getElementById('test-results');
+            results.innerHTML = '<p>🎵 Testing basic audio playback...</p>';
+            
+            try {
+                if (typeof AudioPlayer === 'undefined') {
+                    results.innerHTML = '<p class="not-supported">❌ AudioPlayer not available</p>';
+                    return;
+                }
+                
+                const player = new AudioPlayer();
+                player.createAudioContext();
+                
+                // Create a simple test tone using Web Audio API
+                const audioContext = player.audioContext;
+                const sampleRate = audioContext.sampleRate;
+                const duration = 0.5; // 500ms
+                const samples = sampleRate * duration;
+                
+                // Create AudioBuffer
+                const audioBuffer = audioContext.createBuffer(1, samples, sampleRate);
+                const channelData = audioBuffer.getChannelData(0);
+                
+                // Generate 440Hz sine wave
+                for (let i = 0; i < samples; i++) {
+                    channelData[i] = Math.sin(2 * Math.PI * 440 * i / sampleRate) * 0.1;
+                }
+                
+                // Test playback state
+                let status = [];
+                status.push(`Initial playing state: ${player.isPlaying}`);
+                status.push(`AudioBuffer duration: ${audioBuffer.duration}s`);
+                status.push(`AudioBuffer sample rate: ${audioBuffer.sampleRate}Hz`);
+                
+                // Set up completion callback
+                player.onPlaybackComplete = () => {
+                    status.push('Playback completed via callback');
+                };
+                
+                // Play the audio
+                results.innerHTML = '<p class="supported">🎵 Playing test tone (440Hz)...</p>';
+                
+                await player.playAudioBuffer(audioBuffer);
+                
+                status.push(`Final playing state: ${player.isPlaying}`);
+                
+                results.innerHTML = `<p class="supported">✅ Audio playback test successful!</p><pre>${status.join('\n')}</pre>`;
+                
+            } catch (error) {
+                results.innerHTML = `<p class="not-supported">❌ Audio playback test failed: ${error.message}</p>`;
+            }
+        }
+        
+        // Test streaming playback
+        async function testStreamPlayback() {
+            const results = document.getElementById('test-results');
+            results.innerHTML = '<p>🌊 Testing streaming audio playback...</p>';
+            
+            try {
+                if (typeof AudioPlayer === 'undefined') {
+                    results.innerHTML = '<p class="not-supported">❌ AudioPlayer not available</p>';
+                    return;
+                }
+                
+                const player = new AudioPlayer();
+                player.createAudioContext();
+                
+                const audioContext = player.audioContext;
+                const sampleRate = audioContext.sampleRate;
+                
+                // Create multiple audio chunks with different frequencies
+                const frequencies = [440, 523, 659]; // A, C, E notes
+                const chunkDuration = 0.3; // 300ms per chunk
+                const samples = sampleRate * chunkDuration;
+                
+                let status = [];
+                status.push(`Creating ${frequencies.length} audio chunks`);
+                status.push(`Chunk duration: ${chunkDuration}s each`);
+                
+                // Create and queue audio chunks
+                frequencies.forEach((freq, index) => {
+                    const audioBuffer = audioContext.createBuffer(1, samples, sampleRate);
+                    const channelData = audioBuffer.getChannelData(0);
+                    
+                    // Generate sine wave for this frequency
+                    for (let i = 0; i < samples; i++) {
+                        channelData[i] = Math.sin(2 * Math.PI * freq * i / sampleRate) * 0.1;
+                    }
+                    
+                    player.addToQueue(audioBuffer);
+                    status.push(`Added ${freq}Hz chunk to queue`);
+                });
+                
+                status.push(`Queue size: ${player.getQueueSize()} chunks`);
+                status.push(`Total duration: ${player.getQueueDuration()}s`);
+                
+                // Start streaming playback
+                status.push('Starting stream playback...');
+                player.startStreamPlayback();
+                
+                status.push(`Streaming state: ${player.isStreaming}`);
+                status.push(`Next playback time: ${player.nextPlaybackTime}s`);
+                
+                results.innerHTML = `<p class="supported">🌊 Playing streaming audio (A-C-E chord)...</p><pre>${status.join('\n')}</pre>`;
+                
+                // Stop streaming after a delay
+                setTimeout(() => {
+                    player.stopStreamPlayback();
+                    status.push('Stream playback stopped');
+                    status.push(`Final streaming state: ${player.isStreaming}`);
+                    status.push(`Active sources: ${player.activeSources.length}`);
+                    
+                    results.innerHTML = `<p class="supported">✅ Streaming playback test completed!</p><pre>${status.join('\n')}</pre>`;
+                }, 2000);
+                
+            } catch (error) {
+                results.innerHTML = `<p class="not-supported">❌ Streaming playback test failed: ${error.message}</p>`;
+            }
+        }
+        
+        // Test WebSocket audio integration
+        function testWebSocketAudio() {
+            const results = document.getElementById('test-results');
+            results.innerHTML = '<p>🔌 Testing WebSocket audio integration...</p>';
+            
+            try {
+                if (typeof window.AppConnection === 'undefined') {
+                    results.innerHTML = '<p class="not-supported">❌ AppConnection not available</p>';
+                    return;
+                }
+                
+                if (typeof AudioPlayer === 'undefined') {
+                    results.innerHTML = '<p class="not-supported">❌ AudioPlayer not available</p>';
+                    return;
+                }
+                
+                let status = [];
+                
+                // Initialize AudioPlayer
+                window.AppConnection.initializeAudioPlayer();
+                status.push('AudioPlayer initialized');
+                
+                // Get initial audio stats
+                const initialStats = window.AppConnection.getAudioStats();
+                status.push(`Initial stats: ${JSON.stringify(initialStats)}`);
+                
+                // Simulate binary audio message
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const sampleRate = audioContext.sampleRate;
+                const duration = 0.2; // 200ms
+                const samples = sampleRate * duration;
+                
+                // Create test audio buffer
+                const audioBuffer = audioContext.createBuffer(1, samples, sampleRate);
+                const channelData = audioBuffer.getChannelData(0);
+                
+                // Generate 880Hz sine wave
+                for (let i = 0; i < samples; i++) {
+                    channelData[i] = Math.sin(2 * Math.PI * 880 * i / sampleRate) * 0.1;
+                }
+                
+                status.push('Created test audio buffer (880Hz)');
+                status.push(`Buffer duration: ${audioBuffer.duration}s`);
+                status.push(`Buffer sample rate: ${audioBuffer.sampleRate}Hz`);
+                
+                // Simulate WebSocket control messages
+                const startMessage = JSON.stringify({ type: 'audio_start' });
+                const endMessage = JSON.stringify({ type: 'audio_end' });
+                
+                status.push('Simulated control messages:');
+                status.push(`- Start: ${startMessage}`);
+                status.push(`- End: ${endMessage}`);
+                
+                // Get final stats
+                const finalStats = window.AppConnection.getAudioStats();
+                status.push(`Final stats: ${JSON.stringify(finalStats)}`);
+                
+                // Cleanup
+                window.AppConnection.cleanupAudioPlayer();
+                status.push('AudioPlayer cleaned up');
+                
+                results.innerHTML = `<p class="supported">✅ WebSocket audio integration test completed!</p><pre>${status.join('\n')}</pre>`;
+                
+            } catch (error) {
+                results.innerHTML = `<p class="not-supported">❌ WebSocket audio integration test failed: ${error.message}</p>`;
+            }
+        }
+        
+        // Test audio performance optimization
+        async function testAudioPerformance() {
+            const results = document.getElementById('test-results');
+            results.innerHTML = '<p>⚡ Testing audio performance optimization...</p>';
+            
+            try {
+                if (typeof AudioPlayer === 'undefined') {
+                    results.innerHTML = '<p class="not-supported">❌ AudioPlayer not available</p>';
+                    return;
+                }
+                
+                const player = new AudioPlayer();
+                player.createAudioContext();
+                
+                let status = [];
+                status.push('Performance Optimization Test Started');
+                
+                // Test 1: Performance metrics initialization
+                const initialMetrics = player.getPerformanceMetrics();
+                status.push(`Initial metrics: Processed=${initialMetrics.processedChunks}, Dropped=${initialMetrics.droppedChunks}`);
+                
+                // Test 2: Memory estimation
+                const audioContext = player.audioContext;
+                const testBuffer = audioContext.createBuffer(2, 44100, 44100); // 1 second stereo
+                const estimatedMemory = player._estimateBufferMemory(testBuffer);
+                status.push(`Memory estimation: ${Math.round(estimatedMemory / 1024)}KB for 1s stereo buffer`);
+                
+                // Test 3: Queue memory management
+                status.push('Testing queue memory management...');
+                for (let i = 0; i < 10; i++) {
+                    player.addToQueue(testBuffer);
+                }
+                const queueMemory = player._getCurrentQueueMemory();
+                status.push(`Queue memory: ${Math.round(queueMemory / 1024 / 1024 * 100) / 100}MB for 10 buffers`);
+                
+                // Test 4: Memory pressure detection
+                const memoryPressure = player._isMemoryPressure();
+                status.push(`Memory pressure detected: ${memoryPressure}`);
+                
+                // Test 5: Buffer pool management
+                player.clearQueue(); // Should move buffers to pool
+                status.push(`Buffer pool size after clear: ${player.bufferPool.length}`);
+                
+                // Test 6: Performance metrics after operations
+                const finalMetrics = player.getPerformanceMetrics();
+                status.push('Final Performance Metrics:');
+                status.push(`- Queue operations: ${finalMetrics.queueSize.length}`);
+                status.push(`- Current queue memory: ${Math.round(finalMetrics.currentQueueMemory / 1024)}KB`);
+                status.push(`- Buffer pool size: ${finalMetrics.bufferPoolSize}`);
+                
+                if (finalMetrics.memoryInfo) {
+                    const memUsage = Math.round(finalMetrics.memoryInfo.used / finalMetrics.memoryInfo.limit * 100);
+                    status.push(`- Browser memory usage: ${memUsage}%`);
+                }
+                
+                // Test 7: Cleanup performance
+                const startTime = performance.now();
+                player._performCleanup();
+                const cleanupTime = performance.now() - startTime;
+                status.push(`Cleanup completed in: ${cleanupTime.toFixed(2)}ms`);
+                
+                results.innerHTML = `<p class="supported">✅ Audio performance optimization test completed!</p><pre>${status.join('\n')}</pre>`;
+                
+            } catch (error) {
+                results.innerHTML = `<p class="not-supported">❌ Audio performance test failed: ${error.message}</p>`;
+            }
+        }
+        
+        // Test performance under load
+        async function testPerformanceLoad() {
+            const results = document.getElementById('test-results');
+            results.innerHTML = '<p>📊 Testing performance under load...</p>';
+            
+            try {
+                if (typeof AudioPlayer === 'undefined') {
+                    results.innerHTML = '<p class="not-supported">❌ AudioPlayer not available</p>';
+                    return;
+                }
+                
+                const player = new AudioPlayer();
+                player.createAudioContext();
+                
+                let status = [];
+                status.push('Load Testing Started');
+                
+                // Create test audio data
+                const audioContext = player.audioContext;
+                const testBuffers = [];
+                
+                // Create 50 small audio buffers
+                for (let i = 0; i < 50; i++) {
+                    const buffer = audioContext.createBuffer(1, 4410, 44100); // 100ms mono
+                    const channelData = buffer.getChannelData(0);
+                    
+                    // Generate different frequency for each buffer
+                    const freq = 440 + (i * 10);
+                    for (let j = 0; j < 4410; j++) {
+                        channelData[j] = Math.sin(2 * Math.PI * freq * j / 44100) * 0.1;
+                    }
+                    testBuffers.push(buffer);
+                }
+                
+                status.push(`Created ${testBuffers.length} test buffers`);
+                
+                // Test rapid queue operations
+                const startTime = performance.now();
+                
+                for (let i = 0; i < testBuffers.length; i++) {
+                    player.addToQueue(testBuffers[i]);
+                    
+                    // Simulate processing every 10 buffers
+                    if (i % 10 === 0) {
+                        const buffer = player.getNextFromQueue();
+                        if (buffer) {
+                            // Simulate some processing time
+                            await new Promise(resolve => setTimeout(resolve, 1));
+                        }
+                    }
+                }
+                
+                const processingTime = performance.now() - startTime;
+                status.push(`Processing time: ${processingTime.toFixed(2)}ms`);
+                
+                // Check final state
+                const metrics = player.getPerformanceMetrics();
+                status.push('Load Test Results:');
+                status.push(`- Final queue size: ${player.getQueueSize()}`);
+                status.push(`- Queue memory: ${Math.round(metrics.currentQueueMemory / 1024)}KB`);
+                status.push(`- Buffer pool: ${metrics.bufferPoolSize} buffers`);
+                
+                if (metrics.avgQueueSize) {
+                    status.push(`- Average queue size: ${metrics.avgQueueSize.toFixed(1)}`);
+                    status.push(`- Max queue size: ${metrics.maxQueueSize}`);
+                }
+                
+                // Test cleanup under load
+                const cleanupStart = performance.now();
+                player._performCleanup();
+                const cleanupTime = performance.now() - cleanupStart;
+                status.push(`Cleanup time: ${cleanupTime.toFixed(2)}ms`);
+                
+                results.innerHTML = `<p class="supported">✅ Performance load test completed!</p><pre>${status.join('\n')}</pre>`;
+                
+            } catch (error) {
+                results.innerHTML = `<p class="not-supported">❌ Performance load test failed: ${error.message}</p>`;
+            }
+        }
+        
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
             displayCapabilities();
@@ -130,6 +595,14 @@
             document.getElementById('test-microphone').addEventListener('click', testMicrophone);
             document.getElementById('test-recording').addEventListener('click', testRecording);
             document.getElementById('test-playback').addEventListener('click', testPlayback);
+            document.getElementById('test-audio-context').addEventListener('click', testAudioContext);
+            document.getElementById('test-audio-decoding').addEventListener('click', testAudioDecoding);
+            document.getElementById('test-audio-queue').addEventListener('click', testAudioQueue);
+            document.getElementById('test-basic-playback').addEventListener('click', testBasicPlayback);
+            document.getElementById('test-stream-playback').addEventListener('click', testStreamPlayback);
+            document.getElementById('test-websocket-audio').addEventListener('click', testWebSocketAudio);
+            document.getElementById('test-audio-performance').addEventListener('click', testAudioPerformance);
+            document.getElementById('test-performance-load').addEventListener('click', testPerformanceLoad);
         });
     </script>
 </body>

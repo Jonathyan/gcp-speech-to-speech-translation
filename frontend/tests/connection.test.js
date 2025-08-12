@@ -36,6 +36,9 @@ describe('WebSocket Audio Streaming', () => {
     // Reset rate limiting
     jest.clearAllTimers();
     jest.useFakeTimers();
+    
+    // Clear module cache to reset internal state
+    jest.resetModules();
   });
   
   afterEach(() => {
@@ -163,5 +166,265 @@ describe('WebSocket Audio Streaming', () => {
     
     // Should handle binary data without errors
     expect(true).toBe(true);
+  });
+});
+
+describe('AudioPlayer Integration', () => {
+  let mockWebSocket;
+  let mockAudioPlayer;
+  let connection;
+  
+  beforeEach(() => {
+    // Mock WebSocket
+    mockWebSocket = {
+      send: jest.fn(),
+      close: jest.fn(),
+      readyState: 1,
+      onopen: null,
+      onmessage: null,
+      onerror: null,
+      onclose: null
+    };
+    
+    global.WebSocket = jest.fn(() => mockWebSocket);
+    global.WebSocket.OPEN = 1;
+    
+    // Mock AudioPlayer
+    mockAudioPlayer = {
+      createAudioContext: jest.fn(),
+      decodeAudioChunk: jest.fn(),
+      validateAudioBuffer: jest.fn(),
+      addToQueue: jest.fn(),
+      startStreamPlayback: jest.fn(),
+      stopStreamPlayback: jest.fn(),
+      clearQueue: jest.fn(),
+      getQueueSize: jest.fn(),
+      isStreaming: false
+    };
+    
+    global.AudioPlayer = jest.fn(() => mockAudioPlayer);
+    
+    // Mock window dependencies
+    global.window = {
+      AppConfig: {
+        CONFIG: {
+          CONNECTION: {
+            maxRetries: 3,
+            retryDelayBase: 1000
+          }
+        }
+      },
+      AppUI: {
+        updateStatus: jest.fn(),
+        enableButtons: jest.fn()
+      }
+    };
+    
+    connection = require('../src/connection.js');
+  });
+  
+  afterEach(() => {
+    delete global.WebSocket;
+    delete global.AudioPlayer;
+    delete global.window;
+  });
+
+  test('initializeAudioPlayer creates AudioPlayer instance', () => {
+    connection.initializeAudioPlayer();
+    
+    expect(global.AudioPlayer).toHaveBeenCalled();
+    expect(mockAudioPlayer.createAudioContext).toHaveBeenCalled();
+  });
+
+  test('initializeAudioPlayer handles AudioPlayer not available', () => {
+    delete global.AudioPlayer;
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+    
+    connection.initializeAudioPlayer();
+    
+    expect(consoleSpy).toHaveBeenCalledWith('AudioPlayer class not available');
+    consoleSpy.mockRestore();
+  });
+
+  test('initializeAudioPlayer handles creation errors', () => {
+    global.AudioPlayer = jest.fn(() => {
+      throw new Error('AudioContext creation failed');
+    });
+    
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+    
+    connection.initializeAudioPlayer();
+    
+    expect(consoleSpy).toHaveBeenCalledWith('Failed to initialize AudioPlayer:', expect.any(Error));
+    consoleSpy.mockRestore();
+  });
+
+  test('connectWebSocket initializes AudioPlayer for listener mode', () => {
+    connection.connectWebSocket('ws://localhost:8000', 'listener', 'test-stream');
+    
+    expect(global.AudioPlayer).toHaveBeenCalled();
+    expect(mockAudioPlayer.createAudioContext).toHaveBeenCalled();
+  });
+
+  test('connectWebSocket does not initialize AudioPlayer for broadcast mode', () => {
+    connection.connectWebSocket('ws://localhost:8000', 'broadcast', 'test-stream');
+    
+    expect(global.AudioPlayer).not.toHaveBeenCalled();
+  });
+
+  test('handleIncomingAudioData processes audio with AudioPlayer', async () => {
+    const mockAudioBuffer = { duration: 1.0, sampleRate: 44100, numberOfChannels: 2 };
+    mockAudioPlayer.decodeAudioChunk.mockResolvedValue(mockAudioBuffer);
+    mockAudioPlayer.validateAudioBuffer.mockReturnValue({ valid: true, errors: [] });
+    mockAudioPlayer.addToQueue.mockReturnValue(true);
+    
+    connection.connectWebSocket('ws://localhost:8000', 'listener', 'test-stream');
+    
+    const audioData = new ArrayBuffer(1000);
+    const mockEvent = { data: audioData };
+    
+    // Simulate receiving audio data
+    mockWebSocket.onmessage(mockEvent);
+    
+    // Wait for async processing
+    await new Promise(resolve => setTimeout(resolve, 10));
+    
+    expect(mockAudioPlayer.decodeAudioChunk).toHaveBeenCalledWith(audioData);
+    expect(mockAudioPlayer.validateAudioBuffer).toHaveBeenCalledWith(mockAudioBuffer);
+    expect(mockAudioPlayer.addToQueue).toHaveBeenCalledWith(mockAudioBuffer);
+  });
+
+  test('handleIncomingAudioData handles decoding errors', async () => {
+    mockAudioPlayer.decodeAudioChunk.mockRejectedValue(new Error('Decode failed'));
+    
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+    
+    connection.connectWebSocket('ws://localhost:8000', 'listener', 'test-stream');
+    
+    const audioData = new ArrayBuffer(1000);
+    const mockEvent = { data: audioData };
+    
+    mockWebSocket.onmessage(mockEvent);
+    
+    await new Promise(resolve => setTimeout(resolve, 10));
+    
+    expect(consoleSpy).toHaveBeenCalledWith('Audio processing error:', expect.any(Error));
+    consoleSpy.mockRestore();
+  });
+
+  test('handleIncomingAudioData handles validation errors', async () => {
+    const mockAudioBuffer = { duration: 0, sampleRate: 0, numberOfChannels: 0 };
+    mockAudioPlayer.decodeAudioChunk.mockResolvedValue(mockAudioBuffer);
+    mockAudioPlayer.validateAudioBuffer.mockReturnValue({ 
+      valid: false, 
+      errors: ['Invalid duration', 'Invalid sample rate'] 
+    });
+    
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+    
+    connection.connectWebSocket('ws://localhost:8000', 'listener', 'test-stream');
+    
+    const audioData = new ArrayBuffer(1000);
+    const mockEvent = { data: audioData };
+    
+    mockWebSocket.onmessage(mockEvent);
+    
+    await new Promise(resolve => setTimeout(resolve, 10));
+    
+    expect(consoleSpy).toHaveBeenCalledWith('Invalid audio buffer:', ['Invalid duration', 'Invalid sample rate']);
+    expect(mockAudioPlayer.addToQueue).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  test('handleIncomingMessage processes JSON control messages', () => {
+    connection.connectWebSocket('ws://localhost:8000', 'listener', 'test-stream');
+    
+    const controlMessage = JSON.stringify({ type: 'audio_start' });
+    const mockEvent = { data: controlMessage };
+    
+    mockWebSocket.onmessage(mockEvent);
+    
+    expect(mockAudioPlayer.startStreamPlayback).toHaveBeenCalled();
+  });
+
+  test('handleIncomingMessage handles audio_end message', () => {
+    mockAudioPlayer.isStreaming = true;
+    mockAudioPlayer.getQueueSize.mockReturnValue(0);
+    
+    connection.connectWebSocket('ws://localhost:8000', 'listener', 'test-stream');
+    
+    const controlMessage = JSON.stringify({ type: 'audio_end' });
+    const mockEvent = { data: controlMessage };
+    
+    jest.useFakeTimers();
+    mockWebSocket.onmessage(mockEvent);
+    
+    jest.advanceTimersByTime(1000);
+    
+    expect(mockAudioPlayer.stopStreamPlayback).toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+
+  test('handleIncomingMessage handles plain text messages', () => {
+    const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+    
+    connection.connectWebSocket('ws://localhost:8000', 'listener', 'test-stream');
+    
+    const textMessage = 'Plain text message';
+    const mockEvent = { data: textMessage };
+    
+    mockWebSocket.onmessage(mockEvent);
+    
+    expect(consoleSpy).toHaveBeenCalledWith('Text message received:', textMessage);
+    consoleSpy.mockRestore();
+  });
+
+  test('cleanupAudioPlayer stops playback and clears queue', () => {
+    connection.initializeAudioPlayer();
+    connection.cleanupAudioPlayer();
+    
+    expect(mockAudioPlayer.stopStreamPlayback).toHaveBeenCalled();
+    expect(mockAudioPlayer.clearQueue).toHaveBeenCalled();
+  });
+
+  test('disconnectWebSocket cleans up AudioPlayer', () => {
+    connection.connectWebSocket('ws://localhost:8000', 'listener', 'test-stream');
+    connection.disconnectWebSocket();
+    
+    expect(mockAudioPlayer.stopStreamPlayback).toHaveBeenCalled();
+    expect(mockAudioPlayer.clearQueue).toHaveBeenCalled();
+  });
+
+  test('getAudioStats returns audio processing statistics', () => {
+    connection.connectWebSocket('ws://localhost:8000', 'listener', 'test-stream');
+    
+    const stats = connection.getAudioStats();
+    
+    expect(stats).toHaveProperty('chunksReceived');
+    expect(stats).toHaveProperty('bytesReceived');
+    expect(stats).toHaveProperty('chunksProcessed');
+    expect(stats).toHaveProperty('processingErrors');
+  });
+
+  test('audio statistics are updated correctly', async () => {
+    const mockAudioBuffer = { duration: 1.0, sampleRate: 44100, numberOfChannels: 2 };
+    mockAudioPlayer.decodeAudioChunk.mockResolvedValue(mockAudioBuffer);
+    mockAudioPlayer.validateAudioBuffer.mockReturnValue({ valid: true, errors: [] });
+    mockAudioPlayer.addToQueue.mockReturnValue(true);
+    
+    connection.connectWebSocket('ws://localhost:8000', 'listener', 'test-stream');
+    
+    const audioData = new ArrayBuffer(1000);
+    const mockEvent = { data: audioData };
+    
+    mockWebSocket.onmessage(mockEvent);
+    
+    await new Promise(resolve => setTimeout(resolve, 10));
+    
+    const stats = connection.getAudioStats();
+    expect(stats.chunksReceived).toBe(1);
+    expect(stats.bytesReceived).toBe(1000);
+    expect(stats.chunksProcessed).toBe(1);
+    expect(stats.processingErrors).toBe(0);
   });
 });

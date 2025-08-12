@@ -28,6 +28,14 @@ function isGetUserMediaSupported() {
 }
 
 /**
+ * Check if Web Audio API is supported
+ * @returns {boolean} True if Web Audio API is supported
+ */
+function isWebAudioSupported() {
+  return typeof AudioContext !== 'undefined' || typeof webkitAudioContext !== 'undefined';
+}
+
+/**
  * Check audio support capabilities
  * @returns {object} Audio support status
  */
@@ -35,7 +43,7 @@ function checkAudioSupport() {
   return {
     mediaRecorder: isMediaRecorderSupported(),
     getUserMedia: isGetUserMediaSupported(),
-    webAudio: typeof AudioContext !== 'undefined' || typeof webkitAudioContext !== 'undefined'
+    webAudio: isWebAudioSupported()
   };
 }
 
@@ -71,6 +79,10 @@ function showCompatibilityWarning() {
   
   if (!support.mediaRecorder) {
     warnings.push('Audio opname wordt niet ondersteund door uw browser.');
+  }
+  
+  if (!support.webAudio) {
+    warnings.push('Audio afspelen wordt niet ondersteund door uw browser.');
   }
   
   if (warnings.length > 0) {
@@ -110,6 +122,7 @@ if (typeof module !== 'undefined' && module.exports) {
     isWebSocketSupported,
     isMediaRecorderSupported,
     isGetUserMediaSupported,
+    isWebAudioSupported,
     checkAudioSupport,
     checkBrowserSupport, 
     showCompatibilityWarning,
@@ -123,6 +136,7 @@ if (typeof window !== 'undefined') {
     isWebSocketSupported,
     isMediaRecorderSupported,
     isGetUserMediaSupported,
+    isWebAudioSupported,
     checkAudioSupport,
     checkBrowserSupport, 
     showCompatibilityWarning,

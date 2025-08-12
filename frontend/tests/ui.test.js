@@ -336,3 +336,302 @@ describe('WebSocket Connection', () => {
     expect(ws.close).toBeDefined();
   });
 });
+
+describe('Complete Listener Mode Implementation', () => {
+  let mockWebSocket;
+  let mockAudioPlayer;
+  
+  beforeEach(() => {
+    // Mock WebSocket
+    mockWebSocket = {
+      send: jest.fn(),
+      close: jest.fn(),
+      readyState: 1, // OPEN
+      onopen: null,
+      onmessage: null,
+      onerror: null,
+      onclose: null
+    };
+    
+    global.WebSocket = jest.fn(() => mockWebSocket);
+    global.WebSocket.OPEN = 1;
+    
+    // Mock AudioPlayer
+    mockAudioPlayer = {
+      createAudioContext: jest.fn(),
+      startStreamPlayback: jest.fn(),
+      stopStreamPlayback: jest.fn(),
+      clearQueue: jest.fn(),
+      isStreaming: false,
+      getQueueSize: jest.fn(() => 0)
+    };
+    
+    // Mock window dependencies
+    global.window = {
+      AppUtils: {
+        isWebAudioSupported: jest.fn(() => true)
+      },
+      AppConnection: {
+        connectWebSocket: jest.fn(),
+        disconnectWebSocket: jest.fn(),
+        getCurrentWebSocket: jest.fn(() => mockWebSocket),
+        getAudioStats: jest.fn(() => ({
+          chunksReceived: 5,
+          bytesReceived: 5000,
+          chunksProcessed: 4,
+          processingErrors: 1
+        }))
+      },
+      AppConfig: {
+        getWebSocketURL: jest.fn(() => 'ws://localhost:8000')
+      },
+      prompt: jest.fn(() => 'test-stream-123')
+    };
+    
+    // Mock DOM
+    document.body.innerHTML = `
+      <div id="status">Ready</div>
+      <button id="start-broadcast">Start Uitzending</button>
+      <button id="join-listener">Luisteren</button>
+      <button id="disconnect">Verbinding Verbreken</button>
+    `;
+    
+    // Mock timers
+    jest.useFakeTimers();
+  });
+  
+  afterEach(() => {
+    delete global.WebSocket;
+    delete global.window;
+    jest.useRealTimers();
+  });
+
+  test('joinListener initializes complete listener workflow', async () => {
+    const ui = require('../src/ui.js');
+    
+    // Start listening
+    ui.joinListener();
+    
+    // Verify Web Audio API support check
+    expect(window.AppUtils.isWebAudioSupported).toHaveBeenCalled();
+    
+    // Verify stream ID prompt
+    expect(window.prompt).toHaveBeenCalledWith(
+      'Voer stream ID in (of laat leeg voor test-stream):',
+      'test-stream'
+    );
+    
+    // Verify WebSocket connection setup
+    expect(window.AppConnection.connectWebSocket).toHaveBeenCalledWith(
+      'ws://localhost:8000',
+      'listener',
+      'test-stream-123'
+    );
+    
+    // Fast-forward timer to complete setup
+    jest.advanceTimersByTime(1000);
+    
+    // Verify UI state updated
+    const listenButton = document.getElementById('join-listener');
+    expect(listenButton.textContent).toBe('Stop Luisteren');
+    
+    const startButton = document.getElementById('start-broadcast');
+    expect(startButton.disabled).toBe(true);
+  });
+
+  test('joinListener handles Web Audio API not supported', () => {
+    const ui = require('../src/ui.js');
+    
+    // Mock Web Audio API not supported
+    window.AppUtils.isWebAudioSupported.mockReturnValue(false);
+    
+    ui.joinListener();
+    
+    // Verify error handling
+    const status = document.getElementById('status');
+    expect(status.textContent).toBe('❌ Web Audio API niet ondersteund');
+    
+    // Verify no connection attempted
+    expect(window.AppConnection.connectWebSocket).not.toHaveBeenCalled();
+  });
+
+  test('joinListener handles user cancellation', () => {
+    const ui = require('../src/ui.js');
+    
+    // Mock user cancelling prompt
+    window.prompt.mockReturnValue(null);
+    
+    ui.joinListener();
+    
+    // Verify no connection attempted
+    expect(window.AppConnection.connectWebSocket).not.toHaveBeenCalled();
+    
+    const status = document.getElementById('status');
+    expect(status.textContent).toBe('Ready');
+  });
+
+  test('joinListener handles connection failure', () => {
+    const ui = require('../src/ui.js');
+    
+    // Mock connection failure
+    window.AppConnection.getCurrentWebSocket.mockReturnValue(null);
+    
+    ui.joinListener();
+    jest.advanceTimersByTime(1000);
+    
+    // Verify error handling
+    const status = document.getElementById('status');
+    expect(status.textContent).toBe('❌ Verbinding mislukt');
+  });
+
+  test('stopListening cleans up listener resources', () => {
+    const ui = require('../src/ui.js');
+    
+    // Start listening first
+    ui.joinListener();
+    jest.advanceTimersByTime(1000);
+    
+    // Stop listening
+    ui.stopListening();
+    
+    // Verify cleanup
+    expect(window.AppConnection.disconnectWebSocket).toHaveBeenCalled();
+    
+    // Verify UI state reset
+    const listenButton = document.getElementById('join-listener');
+    expect(listenButton.textContent).toBe('Luisteren');
+    
+    const startButton = document.getElementById('start-broadcast');
+    expect(startButton.disabled).toBe(false);
+    
+    const status = document.getElementById('status');
+    expect(status.textContent).toBe('Luisteren gestopt');
+  });
+
+  test('updateListenerUI correctly manages UI state', () => {
+    const ui = require('../src/ui.js');
+    
+    // Test listening state
+    ui.joinListener();
+    jest.advanceTimersByTime(1000);
+    
+    const listenButton = document.getElementById('join-listener');
+    const startButton = document.getElementById('start-broadcast');
+    const disconnectButton = document.getElementById('disconnect');
+    
+    expect(listenButton.textContent).toBe('Stop Luisteren');
+    expect(startButton.disabled).toBe(true);
+    expect(disconnectButton.disabled).toBe(false);
+    
+    // Test stopped state
+    ui.stopListening();
+    
+    expect(listenButton.textContent).toBe('Luisteren');
+    expect(startButton.disabled).toBe(false);
+    expect(disconnectButton.disabled).toBe(true);
+  });
+
+  test('showListeningIndicator manages visual indicator', () => {
+    const ui = require('../src/ui.js');
+    
+    // Show indicator
+    ui.showListeningIndicator(true);
+    
+    const indicator = document.getElementById('listening-indicator');
+    expect(indicator).toBeTruthy();
+    expect(indicator.innerHTML).toBe('🎧');
+    expect(indicator.style.position).toBe('fixed');
+    
+    // Hide indicator
+    ui.showListeningIndicator(false);
+    
+    const removedIndicator = document.getElementById('listening-indicator');
+    expect(removedIndicator).toBeFalsy();
+  });
+
+  test('audio status monitoring updates UI with statistics', () => {
+    const ui = require('../src/ui.js');
+    
+    // Start listening to trigger monitoring
+    ui.joinListener();
+    jest.advanceTimersByTime(1000);
+    
+    // Fast-forward to trigger status update
+    jest.advanceTimersByTime(2000);
+    
+    // Verify status updated with statistics
+    const status = document.getElementById('status');
+    expect(status.textContent).toContain('Luisteren - Stream: test-stream-123');
+    expect(status.textContent).toContain('Ontvangen: 5 chunks (5KB)');
+    expect(status.textContent).toContain('Fouten: 1');
+    
+    expect(window.AppConnection.getAudioStats).toHaveBeenCalled();
+  });
+
+  test('audio status monitoring stops when listening stops', () => {
+    const ui = require('../src/ui.js');
+    
+    // Start listening
+    ui.joinListener();
+    jest.advanceTimersByTime(1000);
+    
+    // Verify monitoring started
+    expect(setInterval).toHaveBeenCalled();
+    
+    // Stop listening
+    ui.stopListening();
+    
+    // Verify monitoring stopped
+    expect(clearInterval).toHaveBeenCalled();
+  });
+
+  test('enableButtons respects active session states', () => {
+    const ui = require('../src/ui.js');
+    
+    // Start listening
+    ui.joinListener();
+    jest.advanceTimersByTime(1000);
+    
+    // Try to enable buttons while listening
+    ui.enableButtons(true);
+    
+    const startButton = document.getElementById('start-broadcast');
+    const listenButton = document.getElementById('join-listener');
+    
+    // Buttons should remain in their session state, not be enabled
+    expect(startButton.disabled).toBe(true); // Still disabled during listening
+    expect(listenButton.textContent).toBe('Stop Luisteren'); // Still in listening mode
+  });
+
+  test('complete listener workflow integration', () => {
+    const ui = require('../src/ui.js');
+    
+    // Initial state
+    const status = document.getElementById('status');
+    const listenButton = document.getElementById('join-listener');
+    
+    expect(status.textContent).toBe('Ready');
+    expect(listenButton.textContent).toBe('Luisteren');
+    
+    // Start listening
+    ui.joinListener();
+    expect(status.textContent).toBe('Audio systeem initialiseren...');
+    
+    // Connection setup
+    jest.advanceTimersByTime(500);
+    expect(status.textContent).toBe('Verbinden als luisteraar...');
+    
+    // Connection established
+    jest.advanceTimersByTime(500);
+    expect(listenButton.textContent).toBe('Stop Luisteren');
+    
+    // Status monitoring active
+    jest.advanceTimersByTime(2000);
+    expect(status.textContent).toContain('Luisteren - Stream:');
+    
+    // Stop listening
+    ui.stopListening();
+    expect(status.textContent).toBe('Luisteren gestopt');
+    expect(listenButton.textContent).toBe('Luisteren');
+  });
+});

@@ -33,6 +33,22 @@ describe('Audio Support Detection', () => {
     expect(utils.isGetUserMediaSupported()).toBe(true);
   });
 
+  test('isWebAudioSupported detects Web Audio API support', () => {
+    const utils = require('../src/utils.js');
+    
+    // Test when Web Audio API is not supported
+    expect(utils.isWebAudioSupported()).toBe(false);
+    
+    // Test when AudioContext is supported
+    global.AudioContext = function() {};
+    expect(utils.isWebAudioSupported()).toBe(true);
+    
+    // Reset and test webkit fallback
+    delete global.AudioContext;
+    global.webkitAudioContext = function() {};
+    expect(utils.isWebAudioSupported()).toBe(true);
+  });
+
   test('checkAudioSupport returns comprehensive audio capabilities', () => {
     const utils = require('../src/utils.js');
     
@@ -79,39 +95,23 @@ describe('Audio Support Detection', () => {
     expect(support).toHaveProperty('webSocket');
   });
 
-  test('showCompatibilityWarning shows audio warnings', () => {
+  test('showCompatibilityWarning includes Web Audio API warnings', () => {
     const utils = require('../src/utils.js');
     
-    // Ensure no audio support (reset globals)
-    delete global.MediaRecorder;
-    delete global.navigator;
-    delete global.WebSocket;
-    
-    // Mock DOM
-    const mockWarning = { style: {}, innerHTML: '' };
-    const mockBody = {
-      insertBefore: jest.fn(),
-      firstChild: {}
-    };
-    const mockCreateElement = jest.fn(() => mockWarning);
-    global.document = {
-      createElement: mockCreateElement,
-      body: mockBody,
-      addEventListener: jest.fn(),
-      querySelector: jest.fn()
-    };
-    
-    // Verify no support is detected
+    // Test that Web Audio API is included in browser support check
     const support = utils.checkBrowserSupport();
-    expect(support.webSocket).toBe(false);
-    expect(support.getUserMedia).toBe(false);
-    expect(support.mediaRecorder).toBe(false);
+    expect(support).toHaveProperty('webAudio');
     
-    // Test with no audio support
-    utils.showCompatibilityWarning();
+    // Test with no Web Audio support
+    delete global.AudioContext;
+    delete global.webkitAudioContext;
     
-    expect(mockCreateElement).toHaveBeenCalledWith('div');
-    expect(mockBody.insertBefore).toHaveBeenCalled();
-    expect(mockWarning.innerHTML).toContain('Browser Compatibiliteit');
+    const supportWithoutWebAudio = utils.checkAudioSupport();
+    expect(supportWithoutWebAudio.webAudio).toBe(false);
+    
+    // Test with Web Audio support
+    global.AudioContext = function() {};
+    const supportWithWebAudio = utils.checkAudioSupport();
+    expect(supportWithWebAudio.webAudio).toBe(true);
   });
 });

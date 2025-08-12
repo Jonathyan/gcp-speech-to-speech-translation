@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete Listener Mode Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .test-button { background: #007bff; color: white; border: none; padding: 10px 20px; margin: 10px 5px; border-radius: 5px; cursor: pointer; }
+        .test-button:disabled { background: #ccc; cursor: not-allowed; }
+        .status { padding: 15px; margin: 10px 0; border-radius: 5px; background: #f8f9fa; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        #test-results { margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px; }
+        .indicator { position: fixed; top: 20px; font-size: 24px; z-index: 1000; }
+        .listening-indicator { left: 20px; }
+        .recording-indicator { right: 20px; }
+    </style>
+</head>
+<body>
+    <h1>🎧 Complete Listener Mode Test</h1>
+    
+    <div class="status" id="status">Ready</div>
+    
+    <h2>Listener Mode Controls</h2>
+    <button id="join-listener" class="test-button">Luisteren</button>
+    <button id="disconnect" class="test-button" disabled>Verbinding Verbreken</button>
+    
+    <h2>Manual Tests</h2>
+    <button id="test-web-audio-support" class="test-button">Test Web Audio Support</button>
+    <button id="test-ui-state-management" class="test-button">Test UI State Management</button>
+    <button id="test-audio-statistics" class="test-button">Test Audio Statistics</button>
+    <button id="test-complete-workflow" class="test-button">Test Complete Workflow</button>
+    
+    <div id="test-results"></div>
+    
+    <script src="../src/utils.js"></script>
+    <script src="../src/audioPlayer.js"></script>
+    <script src="../src/connection.js"></script>
+    <script src="../src/config.js"></script>
+    <script src="../src/ui.js"></script>
+    
+    <script>
+        // Mock window.prompt for testing
+        window.prompt = function(message, defaultValue) {
+            console.log('Prompt:', message, 'Default:', defaultValue);
+            return 'test-stream-123';
+        };
+        
+        // Initialize UI
+        document.addEventListener('DOMContentLoaded', function() {
+            window.AppUI.initializeUI();
+            
+            // Test Web Audio Support
+            document.getElementById('test-web-audio-support').addEventListener('click', function() {
+                const results = document.getElementById('test-results');
+                results.innerHTML = '<h3>🔊 Testing Web Audio Support</h3>';
+                
+                try {
+                    const isSupported = window.AppUtils.isWebAudioSupported();
+                    const audioSupport = window.AppUtils.checkAudioSupport();
+                    
+                    let status = [];
+                    status.push(`Web Audio API Supported: ${isSupported ? '✅' : '❌'}`);
+                    status.push(`MediaRecorder Supported: ${audioSupport.mediaRecorder ? '✅' : '❌'}`);
+                    status.push(`getUserMedia Supported: ${audioSupport.getUserMedia ? '✅' : '❌'}`);
+                    
+                    results.innerHTML += `<div class="success"><pre>${status.join('\\n')}</pre></div>`;
+                } catch (error) {
+                    results.innerHTML += `<div class="error">Error: ${error.message}</div>`;
+                }
+            });
+            
+            // Test UI State Management
+            document.getElementById('test-ui-state-management').addEventListener('click', function() {
+                const results = document.getElementById('test-results');
+                results.innerHTML = '<h3>🎛️ Testing UI State Management</h3>';
+                
+                try {
+                    let status = [];
+                    
+                    // Test initial state
+                    const listenButton = document.getElementById('join-listener');
+                    const disconnectButton = document.getElementById('disconnect');
+                    
+                    status.push(`Initial Listen Button: "${listenButton.textContent}"`);
+                    status.push(`Initial Disconnect Button Disabled: ${disconnectButton.disabled}`);
+                    
+                    // Test listening indicator
+                    window.AppUI.showListeningIndicator(true);
+                    const indicator = document.getElementById('listening-indicator');
+                    status.push(`Listening Indicator Created: ${indicator ? '✅' : '❌'}`);
+                    
+                    // Test UI update
+                    window.AppUI.updateListenerUI();
+                    status.push(`UI Updated Successfully: ✅`);
+                    
+                    // Cleanup
+                    window.AppUI.showListeningIndicator(false);
+                    
+                    results.innerHTML += `<div class="success"><pre>${status.join('\\n')}</pre></div>`;
+                } catch (error) {
+                    results.innerHTML += `<div class="error">Error: ${error.message}</div>`;
+                }
+            });
+            
+            // Test Audio Statistics
+            document.getElementById('test-audio-statistics').addEventListener('click', function() {
+                const results = document.getElementById('test-results');
+                results.innerHTML = '<h3>📊 Testing Audio Statistics</h3>';
+                
+                try {
+                    // Initialize connection module
+                    window.AppConnection.initializeAudioPlayer();
+                    
+                    const stats = window.AppConnection.getAudioStats();
+                    
+                    let status = [];
+                    status.push(`Chunks Received: ${stats.chunksReceived}`);
+                    status.push(`Bytes Received: ${stats.bytesReceived}`);
+                    status.push(`Chunks Processed: ${stats.chunksProcessed}`);
+                    status.push(`Processing Errors: ${stats.processingErrors}`);
+                    
+                    // Cleanup
+                    window.AppConnection.cleanupAudioPlayer();
+                    
+                    results.innerHTML += `<div class="success"><pre>${status.join('\\n')}</pre></div>`;
+                } catch (error) {
+                    results.innerHTML += `<div class="error">Error: ${error.message}</div>`;
+                }
+            });
+            
+            // Test Complete Workflow
+            document.getElementById('test-complete-workflow').addEventListener('click', function() {
+                const results = document.getElementById('test-results');
+                results.innerHTML = '<h3>🔄 Testing Complete Listener Workflow</h3>';
+                
+                try {
+                    let status = [];
+                    
+                    // Check initial state
+                    const statusDiv = document.getElementById('status');
+                    const listenButton = document.getElementById('join-listener');
+                    
+                    status.push(`Initial Status: "${statusDiv.textContent}"`);
+                    status.push(`Initial Button Text: "${listenButton.textContent}"`);
+                    
+                    // Test Web Audio API check
+                    const webAudioSupported = window.AppUtils.isWebAudioSupported();
+                    status.push(`Web Audio API Check: ${webAudioSupported ? '✅' : '❌'}`);
+                    
+                    if (webAudioSupported) {
+                        // Simulate listener workflow
+                        status.push('Simulating listener workflow...');
+                        
+                        // Test UI state transitions
+                        window.AppUI.showListeningIndicator(true);
+                        status.push('Listening indicator shown: ✅');
+                        
+                        // Test audio player integration
+                        window.AppConnection.initializeAudioPlayer();
+                        const audioStats = window.AppConnection.getAudioStats();
+                        status.push(`Audio player initialized: ✅`);
+                        status.push(`Initial stats: ${JSON.stringify(audioStats)}`);
+                        
+                        // Cleanup
+                        window.AppUI.showListeningIndicator(false);
+                        window.AppConnection.cleanupAudioPlayer();
+                        status.push('Cleanup completed: ✅');
+                    }
+                    
+                    results.innerHTML += `<div class="success"><pre>${status.join('\\n')}</pre></div>`;
+                } catch (error) {
+                    results.innerHTML += `<div class="error">Error: ${error.message}</div>`;
+                }
+            });
+        });
+    </script>
+</body>
+</html>

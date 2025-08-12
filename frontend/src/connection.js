@@ -11,6 +11,15 @@ let sendCount = 0;
 const RATE_LIMIT_WINDOW = 1000; // 1 second
 const MAX_SENDS_PER_WINDOW = 10; // Max 10 sends per second
 
+// Audio player integration
+let audioPlayer = null;
+let audioStats = {
+  chunksReceived: 0,
+  bytesReceived: 0,
+  chunksProcessed: 0,
+  processingErrors: 0
+};
+
 /**
  * Send audio chunk via WebSocket
  * @param {WebSocket} websocket - WebSocket connection
@@ -28,7 +37,7 @@ function sendAudioChunk(websocket, audioData) {
   
   // Rate limiting
   const now = Date.now();
-  if (now - lastSendTime > RATE_LIMIT_WINDOW) {
+  if (lastSendTime === 0 || now - lastSendTime > RATE_LIMIT_WINDOW) {
     // Reset counter for new window
     sendCount = 0;
     lastSendTime = now;
@@ -76,6 +85,11 @@ function connectWebSocket(url, mode, streamId) {
   // Generate stream ID if not provided
   if (!streamId) {
     streamId = generateStreamId();
+  }
+  
+  // Initialize audio player for listener mode
+  if (mode === 'listener') {
+    initializeAudioPlayer();
   }
   
   // Build endpoint URL based on mode
@@ -157,8 +171,51 @@ function handleCleanDisconnect() {
  * @param {ArrayBuffer} audioData - Binary audio data
  */
 function handleIncomingAudioData(audioData) {
+  audioStats.chunksReceived++;
+  audioStats.bytesReceived += audioData.byteLength;
+  
   console.log('Audio data received:', audioData.byteLength, 'bytes');
-  // Future: Process audio data for playback
+  
+  if (!audioPlayer) {
+    console.warn('AudioPlayer not initialized - audio data ignored');
+    return;
+  }
+  
+  // Process audio data asynchronously
+  processAudioData(audioData);
+}
+
+/**
+ * Process audio data for playback
+ * @param {ArrayBuffer} audioData - Binary audio data
+ */
+async function processAudioData(audioData) {
+  try {
+    // Decode audio chunk
+    const audioBuffer = await audioPlayer.decodeAudioChunk(audioData);
+    
+    // Validate audio buffer
+    const validation = audioPlayer.validateAudioBuffer(audioBuffer);
+    if (!validation.valid) {
+      console.error('Invalid audio buffer:', validation.errors);
+      audioStats.processingErrors++;
+      return;
+    }
+    
+    // Add to playback queue
+    const added = audioPlayer.addToQueue(audioBuffer);
+    if (added) {
+      audioStats.chunksProcessed++;
+      console.log('Audio chunk queued for playback');
+    } else {
+      console.warn('Failed to add audio chunk to queue');
+      audioStats.processingErrors++;
+    }
+    
+  } catch (error) {
+    console.error('Audio processing error:', error);
+    audioStats.processingErrors++;
+  }
 }
 
 /**
@@ -192,8 +249,95 @@ function handleConnectionError(url, mode, streamId) {
  * @param {string} data - Message data
  */
 function handleIncomingMessage(data) {
-  console.log('Message received:', data);
-  // Future: Handle audio data processing
+  try {
+    // Try to parse as JSON for control messages
+    const message = JSON.parse(data);
+    console.log('Control message received:', message);
+    
+    // Handle different message types
+    if (message.type === 'audio_start') {
+      handleAudioStreamStart();
+    } else if (message.type === 'audio_end') {
+      handleAudioStreamEnd();
+    } else if (message.type === 'error') {
+      console.error('Server error:', message.error);
+    }
+    
+  } catch (error) {
+    // Not JSON, treat as plain text message
+    console.log('Text message received:', data);
+  }
+}
+
+/**
+ * Handle audio stream start
+ */
+function handleAudioStreamStart() {
+  if (audioPlayer && !audioPlayer.isStreaming) {
+    audioPlayer.startStreamPlayback();
+    console.log('Audio stream playback started');
+  }
+}
+
+/**
+ * Handle audio stream end
+ */
+function handleAudioStreamEnd() {
+  if (audioPlayer && audioPlayer.isStreaming) {
+    // Let current queue finish playing
+    setTimeout(() => {
+      if (audioPlayer.getQueueSize() === 0) {
+        audioPlayer.stopStreamPlayback();
+        console.log('Audio stream playback stopped');
+      }
+    }, 1000);
+  }
+}
+
+/**
+ * Initialize audio player for listener mode
+ */
+function initializeAudioPlayer() {
+  try {
+    if (typeof AudioPlayer !== 'undefined') {
+      audioPlayer = new AudioPlayer();
+      audioPlayer.createAudioContext();
+      
+      // Reset audio statistics
+      audioStats = {
+        chunksReceived: 0,
+        bytesReceived: 0,
+        chunksProcessed: 0,
+        processingErrors: 0
+      };
+      
+      console.log('AudioPlayer initialized for listener mode');
+    } else {
+      console.error('AudioPlayer class not available');
+    }
+  } catch (error) {
+    console.error('Failed to initialize AudioPlayer:', error);
+  }
+}
+
+/**
+ * Cleanup audio player
+ */
+function cleanupAudioPlayer() {
+  if (audioPlayer) {
+    audioPlayer.stopStreamPlayback();
+    audioPlayer.clearQueue();
+    audioPlayer = null;
+    console.log('AudioPlayer cleaned up');
+  }
+}
+
+/**
+ * Get audio statistics
+ * @returns {object} Audio processing statistics
+ */
+function getAudioStats() {
+  return { ...audioStats };
 }
 
 /**
@@ -204,6 +348,10 @@ function disconnectWebSocket() {
     currentWebSocket.close();
     currentWebSocket = null;
   }
+  
+  // Cleanup audio player
+  cleanupAudioPlayer();
+  
   window.AppUI.enableButtons(true);
   window.AppUI.updateStatus('Ready');
 }
@@ -223,7 +371,10 @@ if (typeof module !== 'undefined' && module.exports) {
     disconnectWebSocket, 
     sendAudioChunk,
     generateStreamId,
-    getCurrentWebSocket
+    getCurrentWebSocket,
+    getAudioStats,
+    initializeAudioPlayer,
+    cleanupAudioPlayer
   };
 }
 
@@ -233,6 +384,9 @@ if (typeof window !== 'undefined') {
     disconnectWebSocket, 
     sendAudioChunk,
     generateStreamId,
-    getCurrentWebSocket
+    getCurrentWebSocket,
+    getAudioStats,
+    initializeAudioPlayer,
+    cleanupAudioPlayer
   };
 }
