@@ -1,6 +1,14 @@
 import asyncio
 import logging
 import random
+import io
+import subprocess
+import tempfile
+import os
+from typing import Optional
+from .audio_buffer import WebMChunkBuffer
+from .streaming_stt import stream_manager
+# Enhanced STT service will be imported when needed to avoid circular imports
 
 # Configureer basis logging om de flow te kunnen volgen
 logging.basicConfig(
@@ -15,6 +23,10 @@ async def mock_speech_to_text(audio_chunk: bytes) -> str:
     Wacht 50ms en geeft een vaste tekst terug, met een kans op een fout.
     """
     logging.info("STT: Audio chunk ontvangen, start verwerking...")
+    
+    # Debug browser audio format
+    convert_audio_to_linear16(audio_chunk)
+    
     if random.random() < 0.10:  # 10% kans op een fout
         logging.error("STT: Gesimuleerde API-fout!")
         raise Exception("STT API Error")
@@ -37,6 +49,122 @@ async def pass_through_speech_to_text(audio_chunk: bytes) -> str:
     return result
 
 
+def convert_audio_to_linear16(audio_chunk: bytes) -> bytes:
+    """
+    Convert browser audio to LINEAR16 PCM format using ffmpeg subprocess.
+    """
+    try:
+        logging.info(f"Audio conversion: {len(audio_chunk)} bytes received")
+        
+        # Inspect audio format
+        header = audio_chunk[:16] if len(audio_chunk) >= 16 else audio_chunk
+        header_hex = header.hex()
+        logging.info(f"Audio header: {header_hex}")
+        
+        # Detect format
+        format_detected = "unknown"
+        if audio_chunk.startswith(b'\x1a\x45\xdf\xa3'):
+            format_detected = "webm"
+        elif audio_chunk.startswith(b'RIFF'):
+            format_detected = "wav"
+        elif len(audio_chunk) > 4 and audio_chunk[4:8] == b'ftyp':
+            format_detected = "mp4"
+        
+        logging.info(f"Detected format: {format_detected}")
+        
+        # Skip conversion for very small chunks - likely incomplete
+        if len(audio_chunk) < 1024:
+            logging.warning(f"Skipping conversion for small chunk: {len(audio_chunk)} bytes")
+            return audio_chunk
+        
+        import subprocess
+        
+        # Use more robust ffmpeg command for all formats
+        if format_detected == "webm":
+            # For WebM format, don't specify input format - let ffmpeg detect
+            cmd = [
+                'ffmpeg',
+                '-hide_banner',      # Reduce output noise
+                '-i', 'pipe:0',      # Input from stdin
+                '-vn',               # No video (audio only)
+                '-acodec', 'pcm_s16le',  # Output codec: PCM signed 16-bit little-endian
+                '-ar', '16000',      # Sample rate 16kHz
+                '-ac', '1',          # Mono (1 channel)
+                '-f', 's16le',       # Output format container
+                '-loglevel', 'warning',  # Show warnings and errors
+                'pipe:1'             # Output to stdout
+            ]
+        elif format_detected == "wav":
+            # For WAV format
+            cmd = [
+                'ffmpeg',
+                '-hide_banner',
+                '-f', 'wav',
+                '-i', 'pipe:0',
+                '-acodec', 'pcm_s16le',
+                '-ar', '16000',
+                '-ac', '1', 
+                '-f', 's16le',
+                '-loglevel', 'warning',
+                'pipe:1'
+            ]
+        else:
+            # For unknown formats, let ffmpeg auto-detect
+            cmd = [
+                'ffmpeg',
+                '-hide_banner',
+                '-i', 'pipe:0',
+                '-acodec', 'pcm_s16le',
+                '-ar', '16000',
+                '-ac', '1',
+                '-f', 's16le',
+                '-loglevel', 'warning',
+                'pipe:1'
+            ]
+        
+        # Run ffmpeg conversion
+        result = subprocess.run(
+            cmd,
+            input=audio_chunk,
+            capture_output=True,
+            timeout=10  # Increased timeout for WebM processing
+        )
+        
+        if result.returncode == 0 and result.stdout:
+            logging.info(f"Audio converted successfully: {len(audio_chunk)} → {len(result.stdout)} bytes (LINEAR16)")
+            return result.stdout
+        else:
+            # Log detailed error information
+            stderr_text = result.stderr.decode('utf-8', errors='ignore') if result.stderr else "No error output"
+            stdout_text = result.stdout.decode('utf-8', errors='ignore') if result.stdout else "No stdout"
+            logging.error(f"ffmpeg conversion failed:")
+            logging.error(f"  Command: {' '.join(cmd)}")
+            logging.error(f"  Return code: {result.returncode}")
+            logging.error(f"  Stderr: {stderr_text[:500]}")  # First 500 chars of error
+            logging.error(f"  Stdout: {stdout_text[:200]}")  # First 200 chars of stdout
+            logging.error(f"  Input size: {len(audio_chunk)} bytes")
+            
+            # For debugging, let's try a simple ffmpeg test to see what's wrong
+            if result.returncode == 183:
+                logging.warning("Return code 183: Invalid input format - will use raw audio for Google Cloud auto-detection")
+            elif result.returncode == 1:
+                logging.warning("ffmpeg general error - will use raw audio for Google Cloud auto-detection")
+            else:
+                logging.warning(f"ffmpeg failed with return code {result.returncode} - using raw audio")
+                
+            # Return original audio - Google Cloud will handle format detection
+            return audio_chunk
+            
+    except subprocess.TimeoutExpired:
+        logging.error("Audio conversion timeout (10s exceeded)")
+        return audio_chunk
+    except FileNotFoundError:
+        logging.warning("ffmpeg not found - install with: brew install ffmpeg")
+        return audio_chunk
+    except Exception as e:
+        logging.error(f"Audio conversion error: {e}")
+        return audio_chunk
+
 async def real_speech_to_text(audio_chunk: bytes) -> str:
     """
     Production-ready Google Cloud Speech-to-Text API met streaming support.
@@ -53,6 +181,21 @@ async def real_speech_to_text(audio_chunk: bytes) -> str:
     
     logging.info(f"STT: Real API call - {len(audio_chunk)} bytes, {language_code}")
     
+    # Try to convert audio for better compatibility, but fall back to raw if needed
+    try:
+        converted_audio = convert_audio_to_linear16(audio_chunk)
+        if len(converted_audio) > 0 and converted_audio != audio_chunk:
+            logging.info(f"Audio converted successfully: {len(audio_chunk)} → {len(converted_audio)} bytes")
+            use_raw_format = False
+        else:
+            logging.info(f"Using raw audio format - conversion not needed ({len(audio_chunk)} bytes)")
+            converted_audio = audio_chunk
+            use_raw_format = True
+    except Exception as e:
+        logging.warning(f"Audio conversion failed, using raw format: {e}")
+        converted_audio = audio_chunk
+        use_raw_format = True
+    
     @retry(
         stop=stop_after_attempt(2),
         wait=wait_exponential(multiplier=0.5, max=2),
@@ -62,16 +205,34 @@ async def real_speech_to_text(audio_chunk: bytes) -> str:
         try:
             client = speech.SpeechClient()
             
-            # Optimized config voor streaming performance
-            config = speech.RecognitionConfig(
-                encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-                sample_rate_hertz=sample_rate,
-                language_code=language_code,
-                enable_automatic_punctuation=True,
-                model="latest_short",
-            )
+            # Choose encoding based on conversion success and chunk size
+            if not use_raw_format:
+                # Conversion worked - use LINEAR16
+                encoding = speech.RecognitionConfig.AudioEncoding.LINEAR16
+                config_sample_rate = 16000
+                logging.info("Using LINEAR16 encoding for converted audio")
+            else:
+                # Use WebM/Opus encoding directly - much more reliable than auto-detection
+                encoding = speech.RecognitionConfig.AudioEncoding.WEBM_OPUS
+                config_sample_rate = 48000  # WebM Opus typically uses 48kHz
+                logging.info("Using WEBM_OPUS encoding for direct WebM processing")
             
-            audio = speech.RecognitionAudio(content=audio_chunk)
+            # Build config conditionally based on whether we specify sample rate
+            config_params = {
+                "encoding": encoding,
+                "language_code": language_code,
+                "enable_automatic_punctuation": True,
+                "model": "latest_short",
+                "audio_channel_count": 1,  # Explicitly set mono
+            }
+            
+            # Only add sample_rate_hertz if we have a specific value
+            if config_sample_rate is not None:
+                config_params["sample_rate_hertz"] = config_sample_rate
+                
+            config = speech.RecognitionConfig(**config_params)
+            
+            audio = speech.RecognitionAudio(content=converted_audio)
             
             # Synchronous recognize met timeout
             import asyncio
@@ -104,6 +265,7 @@ async def real_speech_to_text(audio_chunk: bytes) -> str:
         return await _recognize_with_retry()
     except Exception as e:
         logging.error(f"STT: Final failure after retries - {e}")
+        # Raise the error instead of returning fallback
         raise
 
 
@@ -284,8 +446,9 @@ async def real_text_to_speech(text: str) -> bytes:
 async def mock_text_to_speech(text: str) -> bytes:
     """
     Simuleert een Text-to-Speech API-aanroep.
-
-    Wacht 50ms en geeft een vaste audio byte-string terug, met een kans op een fout.
+    
+    Geeft een tekst-marker terug die de frontend zal herkennen als test audio.
+    De frontend zal dan een hoorbare beep genereren.
     """
     logging.info(f"TTS: Tekst ontvangen: '{text}', start audiosynthese...")
     if random.random() < 0.08:  # 8% kans op een fout
@@ -293,6 +456,228 @@ async def mock_text_to_speech(text: str) -> bytes:
         raise Exception("TTS API Error")
 
     await asyncio.sleep(0.05)  # Simuleer 50ms netwerklatentie
-    result = b"mock_english_audio_output"
-    logging.info(f"TTS: Audiosynthese voltooid. Resultaat: {result}")
+    
+    # Return a special marker that the frontend will recognize and convert to an audible beep
+    # This ensures the user will hear something audible for testing
+    result = b"TEST_AUDIO_BEEP_MARKER:" + text.encode('utf-8')
+    
+    logging.info(f"TTS: Mock audiosynthese voltooid. Test audio marker gegenereerd ({len(result)} bytes)")
     return result
+
+
+class BufferedSpeechToText:
+    """
+    Buffered Speech-to-Text service that accumulates WebM chunks 
+    before sending to Google Cloud for better recognition accuracy.
+    """
+    
+    def __init__(self, 
+                 buffer_duration: float = 2.0,
+                 max_buffer_size: int = 500 * 1024,
+                 timeout_seconds: float = 5.0,
+                 stt_service = None):
+        """
+        Initialize buffered STT service.
+        
+        Args:
+            buffer_duration: Minimum time to wait before processing buffer
+            max_buffer_size: Maximum buffer size before forced processing  
+            timeout_seconds: Maximum wait time before forcing processing
+            stt_service: Optional mock STT service for testing
+        """
+        self.buffer = WebMChunkBuffer(
+            min_duration_seconds=buffer_duration,
+            max_buffer_size=max_buffer_size,
+            timeout_seconds=timeout_seconds
+        )
+        self.stt_service = stt_service  # For testing
+        
+        self._logger = logging.getLogger(__name__)
+
+    async def process_chunk(self, audio_chunk: bytes) -> Optional[str]:
+        """
+        Process an audio chunk, buffering until ready for STT.
+        
+        Args:
+            audio_chunk: Raw audio chunk from MediaRecorder
+            
+        Returns:
+            Transcription text if buffer is ready, None if still buffering
+        """
+        if not audio_chunk:
+            return None
+            
+        # Add chunk to buffer
+        self.buffer.add_chunk(audio_chunk)
+        
+        # Log buffer status
+        stats = self.buffer.get_stats()
+        self._logger.debug(f"Buffer stats: {stats}")
+        
+        # Check if buffer is ready for processing
+        if self.buffer.is_ready():
+            return await self._process_buffered_audio()
+        
+        return None  # Still buffering
+
+    async def _process_buffered_audio(self) -> str:
+        """
+        Process the buffered audio through STT pipeline.
+        
+        Returns:
+            Transcription text
+        """
+        combined_audio = self.buffer.get_combined_audio()
+        stats = self.buffer.get_stats()
+        
+        self._logger.info(f"Processing buffered audio: {len(combined_audio)} bytes, "
+                         f"{stats['chunk_count']} chunks, {stats['buffer_duration']:.1f}s duration")
+        
+        # Clear buffer before processing
+        self.buffer.clear()
+        
+        try:
+            # Use mock service if provided (for testing)
+            if self.stt_service:
+                return self.stt_service.recognize_audio(combined_audio)
+            
+            # Otherwise use real STT service
+            return await real_speech_to_text(combined_audio)
+            
+        except Exception as e:
+            self._logger.error(f"Buffered STT processing failed: {e}")
+            raise
+
+
+# Global buffered STT instance for the WebSocket handlers
+_buffered_stt_service = BufferedSpeechToText(
+    buffer_duration=2.0,  # Wait 2 seconds for complete audio
+    max_buffer_size=300 * 1024,  # 300KB max buffer
+    timeout_seconds=4.0   # Force processing after 4 seconds
+)
+
+
+async def buffered_speech_to_text(audio_chunk: bytes) -> Optional[str]:
+    """
+    Process audio chunk through enhanced buffered STT service.
+    
+    This is the main interface that WebSocket handlers should use
+    for Phase 1 enhanced audio processing.
+    
+    Args:
+        audio_chunk: Raw audio chunk from browser
+        
+    Returns:
+        Transcription text if ready, None if still buffering
+    """
+    # Import here to avoid circular import
+    from .enhanced_stt_service import enhanced_stt_service
+    return await enhanced_stt_service.process_chunk(audio_chunk)
+
+
+class StreamingSTTService:
+    """
+    Service wrapper for streaming Speech-to-Text functionality.
+    
+    Integrates Google Cloud streaming STT with the translation pipeline
+    for real-time speech-to-speech translation.
+    """
+    
+    def __init__(self):
+        """Initialize streaming STT service."""
+        self._logger = logging.getLogger(__name__)
+        # Translation cache to avoid re-translating partial results
+        self._translation_cache = {}
+
+    async def create_stream(self, stream_id: str, broadcast_callback) -> bool:
+        """
+        Create new streaming STT session for WebSocket stream.
+        
+        Args:
+            stream_id: Unique stream identifier 
+            broadcast_callback: Async function to broadcast translated audio
+            
+        Returns:
+            True if stream created successfully
+        """
+        async def on_transcript(transcript: str, is_final: bool, confidence: float):
+            """Handle transcript results from streaming STT."""
+            try:
+                self._logger.info(f"[{stream_id}] STT: '{transcript}' (final: {is_final}, conf: {confidence:.2f})")
+                
+                # Only process final transcripts for translation
+                if is_final and transcript.strip():
+                    # Check cache to avoid re-translating
+                    cache_key = transcript.strip().lower()
+                    if cache_key in self._translation_cache:
+                        translated_text = self._translation_cache[cache_key]
+                        self._logger.debug(f"[{stream_id}] Using cached translation: '{translated_text}'")
+                    else:
+                        # Translate the text
+                        translated_text = await real_translation(transcript)
+                        self._translation_cache[cache_key] = translated_text
+                    
+                    # Generate speech audio
+                    audio_content = await real_text_to_speech(translated_text)
+                    
+                    # Broadcast to listeners
+                    await broadcast_callback(stream_id, audio_content)
+                    
+                    self._logger.info(f"[{stream_id}] Pipeline completed: '{transcript}' → '{translated_text}'")
+                
+            except Exception as e:
+                self._logger.error(f"[{stream_id}] Error processing transcript: {e}")
+
+        async def on_error(error: Exception):
+            """Handle streaming STT errors."""
+            self._logger.error(f"[{stream_id}] Streaming STT error: {error}")
+        
+        # Create streaming session
+        success = await stream_manager.create_stream(stream_id, on_transcript, on_error)
+        
+        if success:
+            self._logger.info(f"[{stream_id}] Streaming STT session created")
+        else:
+            self._logger.error(f"[{stream_id}] Failed to create streaming STT session")
+        
+        return success
+
+    async def send_audio(self, stream_id: str, audio_chunk: bytes):
+        """
+        Send audio chunk to streaming STT session.
+        
+        Args:
+            stream_id: Target stream identifier
+            audio_chunk: Raw audio data from WebSocket
+        """
+        await stream_manager.send_audio(stream_id, audio_chunk)
+        self._logger.debug(f"[{stream_id}] Sent {len(audio_chunk)} bytes to streaming STT")
+
+    async def close_stream(self, stream_id: str):
+        """
+        Close streaming STT session.
+        
+        Args:
+            stream_id: Stream identifier to close
+        """
+        await stream_manager.close_stream(stream_id)
+        
+        # Clear translation cache for this stream
+        cache_keys_to_remove = [key for key in self._translation_cache.keys() 
+                               if key.startswith(stream_id)]
+        for key in cache_keys_to_remove:
+            del self._translation_cache[key]
+        
+        self._logger.info(f"[{stream_id}] Streaming STT session closed")
+
+    def get_stats(self):
+        """Get streaming STT service statistics."""
+        manager_stats = stream_manager.get_stats()
+        return {
+            **manager_stats,
+            'translation_cache_size': len(self._translation_cache)
+        }
+
+
+# Global streaming STT service instance
+streaming_stt_service = StreamingSTTService()
