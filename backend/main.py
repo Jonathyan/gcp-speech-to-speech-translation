@@ -296,7 +296,7 @@ async def performance_stats():
             "avg_tts_time_seconds": round(pipeline_stats["tts_avg_time"], 3)
         },
         "connection_stats": {
-            "active_streams": len(connection_manager.listeners),
-            "total_listeners": sum(len(listeners) for listeners in connection_manager.listeners.values())
+            "active_streams": len(connection_manager._streams),
+            "total_listeners": sum(len(listeners) for listeners in connection_manager._streams.values())
         }
     }
