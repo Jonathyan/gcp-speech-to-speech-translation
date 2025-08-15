@@ -182,7 +182,7 @@ async def _tts_with_retry(text: str, max_retries: int = 2) -> bytes:
             voice = texttospeech.VoiceSelectionParams(
                 language_code="en-US", 
                 name="en-US-Neural2-D",  # Neural2 voices are faster
-                ssml_gender=texttospeech.SsmlVoiceGender.FEMALE
+                ssml_gender=texttospeech.SsmlVoiceGender.MALE
             )
             audio_config = texttospeech.AudioConfig(
                 audio_encoding=texttospeech.AudioEncoding.MP3,
