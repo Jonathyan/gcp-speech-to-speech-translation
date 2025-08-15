@@ -44,10 +44,10 @@ class SmartAudioBuffer:
     """Smart audio buffer with quality-based early release and adaptive behavior."""
     
     def __init__(self, 
-                 min_duration_seconds: float = 1.5,
+                 min_duration_seconds: float = 2.5,  # INCREASED: Need longer audio for STT
                  quality_threshold: float = 0.8,
                  max_buffer_size: int = 300 * 1024,  # 300KB
-                 timeout_seconds: float = 4.0,
+                 timeout_seconds: float = 6.0,  # INCREASED: More time for quality audio
                  silence_threshold: float = 0.1,
                  adaptive_timeout: bool = True):
         """
