@@ -212,10 +212,10 @@ async def real_speech_to_text(audio_chunk: bytes) -> str:
                 config_sample_rate = 16000
                 logging.info("Using LINEAR16 encoding for converted audio")
             else:
-                # Use WebM/Opus encoding directly - much more reliable than auto-detection
-                encoding = speech.RecognitionConfig.AudioEncoding.WEBM_OPUS
-                config_sample_rate = 48000  # WebM Opus typically uses 48kHz
-                logging.info("Using WEBM_OPUS encoding for direct WebM processing")
+                # Use OGG_OPUS encoding - better supported than WEBM_OPUS
+                encoding = speech.RecognitionConfig.AudioEncoding.OGG_OPUS
+                config_sample_rate = 48000  # Opus typically uses 48kHz
+                logging.info("Using OGG_OPUS encoding for direct WebM processing (treating as Opus)")
             
             # Build config conditionally based on whether we specify sample rate
             config_params = {
@@ -226,9 +226,13 @@ async def real_speech_to_text(audio_chunk: bytes) -> str:
                 "audio_channel_count": 1,  # Explicitly set mono
             }
             
-            # Only add sample_rate_hertz if we have a specific value
+            # CRITICAL FIX: Always add sample_rate_hertz - required even for ENCODING_UNSPECIFIED
             if config_sample_rate is not None:
                 config_params["sample_rate_hertz"] = config_sample_rate
+            else:
+                # Fallback: Use 16kHz for unknown formats (Google Cloud STT requirement)
+                config_params["sample_rate_hertz"] = 16000
+                logging.warning("No sample rate specified, defaulting to 16kHz for STT compatibility")
                 
             config = speech.RecognitionConfig(**config_params)
             
