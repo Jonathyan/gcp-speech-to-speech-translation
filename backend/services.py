@@ -181,20 +181,27 @@ async def real_speech_to_text(audio_chunk: bytes) -> str:
     
     logging.info(f"STT: Real API call - {len(audio_chunk)} bytes, {language_code}")
     
-    # Try to convert audio for better compatibility, but fall back to raw if needed
-    try:
-        converted_audio = convert_audio_to_linear16(audio_chunk)
-        if len(converted_audio) > 0 and converted_audio != audio_chunk:
-            logging.info(f"Audio converted successfully: {len(audio_chunk)} → {len(converted_audio)} bytes")
-            use_raw_format = False
-        else:
-            logging.info(f"Using raw audio format - conversion not needed ({len(audio_chunk)} bytes)")
+    # CRITICAL FIX: Skip ffmpeg conversion for WebM - use direct WEBM_OPUS
+    # Detect WebM format by header and use direct processing
+    if audio_chunk[:4] == b'\x00\x00\x00' and b'moof' in audio_chunk[:32]:
+        logging.info(f"WebM format detected - using direct WEBM_OPUS processing ({len(audio_chunk)} bytes)")
+        converted_audio = audio_chunk
+        use_raw_format = True  # Use WEBM_OPUS encoding directly
+    else:
+        # Try to convert other formats for better compatibility
+        try:
+            converted_audio = convert_audio_to_linear16(audio_chunk)
+            if len(converted_audio) > 0 and converted_audio != audio_chunk:
+                logging.info(f"Audio converted successfully: {len(audio_chunk)} → {len(converted_audio)} bytes")
+                use_raw_format = False
+            else:
+                logging.info(f"Using raw audio format - conversion not needed ({len(audio_chunk)} bytes)")
+                converted_audio = audio_chunk
+                use_raw_format = True
+        except Exception as e:
+            logging.warning(f"Audio conversion failed, using raw format: {e}")
             converted_audio = audio_chunk
             use_raw_format = True
-    except Exception as e:
-        logging.warning(f"Audio conversion failed, using raw format: {e}")
-        converted_audio = audio_chunk
-        use_raw_format = True
     
     @retry(
         stop=stop_after_attempt(2),
