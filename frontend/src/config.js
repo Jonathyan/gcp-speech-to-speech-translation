@@ -2,8 +2,8 @@
 const CONFIG = {
   // WebSocket URLs
   WEBSOCKET_URL: {
-    development: 'ws://localhost:8000/ws',
-    production: 'wss://your-domain.com/ws'
+    development: 'ws://localhost:8000',
+    production: 'wss://hybrid-stt-service-980225887796.europe-west1.run.app'
   },
   
   // Connection settings
@@ -21,7 +21,7 @@ const CONFIG = {
   
   // Audio settings
   AUDIO: {
-    CHUNK_INTERVAL_MS: 250,
+    CHUNK_INTERVAL_MS: 1000,  // 1s intervals - let Google Cloud handle format detection
     MAX_CHUNK_SIZE: 100 * 1024, // 100KB
     AUDIO_CONSTRAINTS: {
       audio: {
@@ -32,7 +32,8 @@ const CONFIG = {
         autoGainControl: true
       }
     },
-    SUPPORTED_MIME_TYPES: ['audio/webm', 'audio/mp4', 'audio/wav']
+    // Prioritize WAV for Google Cloud compatibility, fallback to WebM if needed
+    SUPPORTED_MIME_TYPES: ['audio/wav', 'audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']
   }
 };
 
