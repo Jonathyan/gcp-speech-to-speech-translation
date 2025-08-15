@@ -212,10 +212,10 @@ async def real_speech_to_text(audio_chunk: bytes) -> str:
                 config_sample_rate = 16000
                 logging.info("Using LINEAR16 encoding for converted audio")
             else:
-                # Use OGG_OPUS encoding - better supported than WEBM_OPUS
-                encoding = speech.RecognitionConfig.AudioEncoding.OGG_OPUS
-                config_sample_rate = 48000  # Opus typically uses 48kHz
-                logging.info("Using OGG_OPUS encoding for direct WebM processing (treating as Opus)")
+                # CRITICAL FIX: Use WEBM_OPUS for browser audio
+                encoding = speech.RecognitionConfig.AudioEncoding.WEBM_OPUS  
+                config_sample_rate = 48000  # Opus in WebM typically uses 48kHz
+                logging.info("Using WEBM_OPUS encoding for direct browser WebM processing")
             
             # Build config conditionally based on whether we specify sample rate
             config_params = {
