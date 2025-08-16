@@ -27,9 +27,10 @@ Dutch-speaking professionals and students need to participate in English-languag
 4. **Long Sentences**: Truncates or loses content in sentences over 2 seconds
 
 ### Target Users
-- **Primary**: Dutch-speaking professionals in international companies
-- **Secondary**: Students attending English-language courses
-- **Tertiary**: Conference interpreters and translators
+- **Primary**: Church members with other native languages listening to church services
+- **Secondary**: Dutch-speaking professionals in international companies
+- **Tertiary**: Students attending English-language courses
+- **Quartary**: Conference interpreters and translators
 
 ---
 
@@ -55,6 +56,15 @@ Dutch-speaking professionals and students need to participate in English-languag
 ## 4. User Stories
 
 ### Core User Stories
+
+#### As a Church Member
+- **I want to** understand the preaching in my onw language in real-time while attending church services 
+- **So that** I can fully understand the message and participate without language barriers
+- **Acceptance Criteria**:
+  - Supports continuous speech for 60+ minutes
+  - Handles church and bible concepts, and bible verses
+  - Maintains accuracy with rapid speech
+
 
 #### As a Dutch Professional
 - **I want to** speak naturally in Dutch during English meetings
