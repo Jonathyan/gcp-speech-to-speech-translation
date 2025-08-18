@@ -2,6 +2,7 @@ import logging
 import threading
 from typing import Dict, List, Set
 from fastapi import WebSocket
+from starlette.websockets import WebSocketState
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,9 @@ class ConnectionManager:
             stream_id: Stream identifier
             audio_data: Binary audio data to broadcast
         """
+        # Clean up dead connections first
+        await self.cleanup_dead_connections(stream_id)
+        
         listeners = self.get_listeners(stream_id)
         
         if not listeners:
@@ -102,3 +106,31 @@ class ConnectionManager:
         # Remove failed listeners
         for failed_websocket in failed_listeners:
             self.remove_listener(stream_id, failed_websocket)
+    
+    async def cleanup_dead_connections(self, stream_id: str) -> int:
+        """
+        Remove dead WebSocket connections from a stream.
+        
+        Args:
+            stream_id: Stream identifier
+            
+        Returns:
+            Number of dead connections removed
+        """
+        listeners = self.get_listeners(stream_id)
+        dead_count = 0
+        
+        for websocket in listeners:
+            # Check if WebSocket is closed or in invalid state
+            if (not hasattr(websocket, 'client_state') or 
+                websocket.client_state == WebSocketState.DISCONNECTED or
+                (hasattr(websocket, 'application_state') and 
+                 websocket.application_state == WebSocketState.DISCONNECTED)):
+                self.remove_listener(stream_id, websocket)
+                dead_count += 1
+                logger.info(f"Removed dead connection from stream '{stream_id}'")
+        
+        if dead_count > 0:
+            logger.info(f"Cleaned up {dead_count} dead connections from stream '{stream_id}'")
+        
+        return dead_count

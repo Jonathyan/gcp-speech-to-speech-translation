@@ -266,7 +266,7 @@ async function startBroadcast() {
   const streamIdInput = document.getElementById('stream-id');
   currentStreamId = streamIdInput ? streamIdInput.value.trim() || window.AppConnection.generateStreamId() : window.AppConnection.generateStreamId();
   
-  // Setup WebSocket connection with streaming mode for better performance (Phase 3 optimization)
+  // Setup WebSocket connection - fallback to broadcast mode while debugging streaming
   updateStatus('Verbinden...');
   const url = window.AppConfig.getWebSocketURL();
   window.AppConnection.connectWebSocket(url, 'streaming', currentStreamId);

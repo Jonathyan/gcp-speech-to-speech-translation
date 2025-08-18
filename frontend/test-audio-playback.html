@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Playback Debug Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        #log {
+            background: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #007bff;
+        }
+        .error {
+            border-left-color: #dc3545;
+            background: #ffebee;
+        }
+        .success {
+            border-left-color: #28a745;
+            background: #e8f5e9;
+        }
+        .info {
+            border-left-color: #17a2b8;
+            background: #e3f2fd;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔊 Audio Playback Debug Test</h1>
+    
+    <div>
+        <h2>Test Controls</h2>
+        <button onclick="connectAsListener()">1. Connect as Listener</button>
+        <button onclick="testDirectAudioPlayback()">2. Test Direct Audio</button>
+        <button onclick="checkAudioPermissions()">3. Check Audio Permissions</button>
+        <button onclick="disconnect()">Disconnect</button>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <div>
+        <h2>Connection Status</h2>
+        <p>WebSocket: <span id="ws-status">Disconnected</span></p>
+        <p>Audio Chunks Received: <span id="chunks-received">0</span></p>
+        <p>Audio Chunks Played: <span id="chunks-played">0</span></p>
+        <p>Errors: <span id="error-count">0</span></p>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+        let ws = null;
+        let stats = {
+            chunksReceived: 0,
+            chunksPlayed: 0,
+            errors: 0
+        };
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(`[${type}] ${message}`);
+        }
+
+        function updateStats() {
+            document.getElementById('chunks-received').textContent = stats.chunksReceived;
+            document.getElementById('chunks-played').textContent = stats.chunksPlayed;
+            document.getElementById('error-count').textContent = stats.errors;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            log('Log cleared', 'info');
+        }
+
+        async function checkAudioPermissions() {
+            log('Checking audio permissions...', 'info');
+            
+            // Check if AudioContext is available
+            if (!window.AudioContext && !window.webkitAudioContext) {
+                log('AudioContext not supported!', 'error');
+                return;
+            }
+            
+            // Create AudioContext
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                log(`AudioContext created: state=${audioContext.state}`, 'success');
+                
+                // Check autoplay policy
+                if (audioContext.state === 'suspended') {
+                    log('AudioContext suspended - user interaction required', 'info');
+                    await audioContext.resume();
+                    log('AudioContext resumed after user interaction', 'success');
+                }
+                
+                // Test playing a simple beep
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = 440; // A4 note
+                gainNode.gain.value = 0.1;
+                
+                oscillator.start();
+                oscillator.stop(audioContext.currentTime + 0.2);
+                
+                log('Test beep played successfully', 'success');
+                
+                setTimeout(() => audioContext.close(), 500);
+                
+            } catch (error) {
+                log(`AudioContext error: ${error.message}`, 'error');
+                stats.errors++;
+            }
+            
+            updateStats();
+        }
+
+        async function testDirectAudioPlayback() {
+            log('Testing direct MP3 playback...', 'info');
+            
+            try {
+                // Create a test MP3 URL (1 second of silence)
+                const testMP3Base64 = 'SUQzAwAAAAAAIVRYWFgAAAAOAAB3d3cuZmFrZS5jb20A//uQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+                const binaryString = atob(testMP3Base64);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                
+                const blob = new Blob([bytes], { type: 'audio/mpeg' });
+                const url = URL.createObjectURL(blob);
+                const audio = new Audio(url);
+                
+                audio.onloadeddata = () => {
+                    log('Test MP3 loaded successfully', 'success');
+                };
+                
+                audio.onplay = () => {
+                    log('Test MP3 playing', 'success');
+                    stats.chunksPlayed++;
+                    updateStats();
+                };
+                
+                audio.onerror = (e) => {
+                    log(`Test MP3 error: ${e.message || 'Unknown error'}`, 'error');
+                    stats.errors++;
+                    updateStats();
+                };
+                
+                audio.onended = () => {
+                    log('Test MP3 playback completed', 'success');
+                    URL.revokeObjectURL(url);
+                };
+                
+                await audio.play();
+                
+            } catch (error) {
+                log(`Direct playback failed: ${error.message}`, 'error');
+                stats.errors++;
+                updateStats();
+            }
+        }
+
+        function connectAsListener() {
+            if (ws) {
+                log('Already connected', 'info');
+                return;
+            }
+            
+            const wsUrl = 'wss://hybrid-stt-service-ysw2dobxea-ew.a.run.app/ws/listen/demo-stream';
+            log(`Connecting to ${wsUrl}...`, 'info');
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                log('WebSocket connected as listener', 'success');
+                document.getElementById('ws-status').textContent = 'Connected';
+            };
+            
+            ws.onclose = (event) => {
+                log(`WebSocket closed: code=${event.code}, reason=${event.reason}`, 'info');
+                document.getElementById('ws-status').textContent = 'Disconnected';
+                ws = null;
+            };
+            
+            ws.onerror = (error) => {
+                log(`WebSocket error: ${error}`, 'error');
+                stats.errors++;
+                updateStats();
+            };
+            
+            ws.onmessage = async (event) => {
+                stats.chunksReceived++;
+                updateStats();
+                
+                if (event.data instanceof Blob) {
+                    const size = event.data.size;
+                    log(`Received audio blob: ${size} bytes`, 'info');
+                    
+                    try {
+                        // Try to play the audio
+                        const url = URL.createObjectURL(event.data);
+                        const audio = new Audio(url);
+                        
+                        audio.onloadeddata = () => {
+                            log(`Audio loaded: ${size} bytes`, 'success');
+                        };
+                        
+                        audio.onplay = () => {
+                            log(`Playing audio: ${size} bytes`, 'success');
+                            stats.chunksPlayed++;
+                            updateStats();
+                        };
+                        
+                        audio.onerror = (e) => {
+                            log(`Audio playback error for ${size} bytes: ${audio.error?.message || 'Unknown'}`, 'error');
+                            stats.errors++;
+                            updateStats();
+                        };
+                        
+                        audio.onended = () => {
+                            log(`Audio playback completed: ${size} bytes`, 'success');
+                            URL.revokeObjectURL(url);
+                        };
+                        
+                        // Attempt to play
+                        const playPromise = audio.play();
+                        if (playPromise !== undefined) {
+                            playPromise.catch(error => {
+                                log(`Play promise rejected: ${error.message}`, 'error');
+                                
+                                // Check if it's an autoplay policy issue
+                                if (error.name === 'NotAllowedError') {
+                                    log('Autoplay blocked - user interaction required. Click any button first!', 'error');
+                                }
+                                
+                                stats.errors++;
+                                updateStats();
+                            });
+                        }
+                        
+                    } catch (error) {
+                        log(`Failed to process audio: ${error.message}`, 'error');
+                        stats.errors++;
+                        updateStats();
+                    }
+                    
+                } else if (event.data instanceof ArrayBuffer) {
+                    log(`Received ArrayBuffer: ${event.data.byteLength} bytes`, 'info');
+                    // Process similar to Blob
+                } else {
+                    log(`Received text message: ${event.data}`, 'info');
+                }
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+                log('Disconnected', 'info');
+            }
+        }
+
+        // Initialize
+        log('Audio Playback Debug Test Ready', 'success');
+        log('Click "Check Audio Permissions" first to enable audio', 'info');
+    </script>
+</body>
+</html>

@@ -230,6 +230,31 @@ async function playTestBeep(frequency = 800, duration = 0.3) {
   }
 }
 
+// Track if user has interacted (for autoplay policy)
+let userHasInteracted = false;
+
+// Enable audio after user interaction
+function enableAudioPlayback() {
+  if (!userHasInteracted) {
+    userHasInteracted = true;
+    console.log('Audio playback enabled after user interaction');
+    
+    // Create and resume AudioContext to satisfy browser autoplay policy
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    audioContext.resume().then(() => {
+      console.log('AudioContext resumed successfully');
+      audioContext.close();
+    });
+  }
+}
+
+// Set up user interaction detection
+if (typeof window !== 'undefined') {
+  ['click', 'touchstart', 'keydown'].forEach(event => {
+    window.addEventListener(event, enableAudioPlayback, { once: true });
+  });
+}
+
 /**
  * Process audio data for playback - simplified direct playback with fallback
  * @param {ArrayBuffer|Blob} audioData - Binary audio data
@@ -313,6 +338,22 @@ async function processAudioData(audioData) {
     // Play the audio with error handling
     try {
       console.log(`Attempting to play MP3 audio: ${dataBuffer.byteLength} bytes`);
+      
+      // Check if user has interacted (for autoplay policy)
+      if (!userHasInteracted) {
+        console.warn('User interaction required for audio playback');
+        // Show UI prompt for user to click
+        if (window.AppUI && window.AppUI.showError) {
+          window.AppUI.showError(
+            'Klik ergens om audio af te spelen',
+            'Browser vereist gebruikersinteractie voor audio',
+            { recoverable: true, clearTime: 5000 }
+          );
+        }
+        // Store audio for later playback after user interaction
+        return;
+      }
+      
       await audio.play();
       audioPlayed = true;
       console.log('MP3 playback started successfully');
@@ -322,8 +363,19 @@ async function processAudioData(audioData) {
       audioStats.processingErrors++;
       URL.revokeObjectURL(audioUrl);
       
-      // Only use beep fallback for small/invalid data
-      if (!audioPlayed && dataBuffer.byteLength < 1000) {
+      // Handle autoplay policy error specifically
+      if (playError.name === 'NotAllowedError') {
+        userHasInteracted = false; // Reset flag
+        console.warn('Autoplay blocked - user interaction required');
+        if (window.AppUI && window.AppUI.showError) {
+          window.AppUI.showError(
+            'Klik om audio te activeren',
+            'Browser blokkeert automatisch afspelen',
+            { recoverable: true, clearTime: 5000 }
+          );
+        }
+      } else if (!audioPlayed && dataBuffer.byteLength < 1000) {
+        // Only use beep fallback for small/invalid data
         console.log('Using beep fallback for small data');
         await playTestBeep(600, 0.2);
       } else {

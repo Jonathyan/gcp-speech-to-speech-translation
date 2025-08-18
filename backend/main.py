@@ -142,10 +142,12 @@ async def _stt_with_retry(audio_chunk: bytes, max_retries: int = 2) -> Optional[
             response = speech_client.recognize(config=config, audio=audio, timeout=10.0)
             
             if not response.results or not response.results[0].alternatives:
-                logging.debug(f"STT attempt {attempt + 1}: No results")
+                logging.info(f"❌ STT attempt {attempt + 1}: No results (audio: {len(audio_chunk)} bytes)")
                 return None
                 
             transcript = response.results[0].alternatives[0].transcript.strip()
+            if transcript:
+                logging.info(f"✅ STT Success: '{transcript}' (audio: {len(audio_chunk)} bytes)")
             return transcript if transcript else None
             
         except Exception as e:
@@ -255,10 +257,12 @@ async def websocket_listener(websocket: WebSocket, stream_id: str):
                 
     except WebSocketDisconnect:
         logging.info(f"🔌 Listener disconnected: {client_id}")
-        connection_manager.remove_listener(stream_id, websocket)
     except Exception as e:
         logging.error(f"❌ Listener error: {e}")
+    finally:
+        # CRITICAL FIX: Always remove listener on disconnect
         connection_manager.remove_listener(stream_id, websocket)
+        logging.info(f"🔌 Listener cleaned up: {client_id}")
 
 
 @app.websocket("/ws/stream/{stream_id}")
@@ -271,18 +275,27 @@ async def websocket_streaming(websocket: WebSocket, stream_id: str):
     logging.info(f"🎙️ Streaming speaker connected: {client_id} → stream '{stream_id}'")
     
     # Set up transcript callback for real-time processing
-    async def handle_transcript(text: str, is_final: bool, confidence: float):
+    async def handle_transcript(text: str, is_final: bool, confidence: float = 1.0):
+        """Handle both interim and final transcripts from streaming STT"""
         nonlocal message_count
+        
+        # Log interim results for debugging
+        if not is_final:
+            logging.info(f"📝 Interim transcript: '{text}'")
+            # TODO: Send interim results to frontend for live display
+            return
+        
+        # Process final results through translation pipeline
         if is_final and text.strip():
             message_count += 1
-            logging.info(f"📝 Streaming transcript #{message_count} (confidence: {confidence:.2f}): '{text}'")
+            logging.info(f"✅ Final transcript #{message_count}: '{text}' (confidence: {confidence:.2f})")
             
             try:
-                # Run through simplified translation pipeline
+                # Translation pipeline
                 translated = await _translation_with_retry(text.strip())
                 audio_output = await _tts_with_retry(translated)
                 
-                # Broadcast to all listeners
+                # Broadcast translated audio
                 await connection_manager.broadcast_to_stream(stream_id, audio_output)
                 logging.info(f"✅ Streaming message #{message_count}: Translation complete")
                 
@@ -314,6 +327,7 @@ async def websocket_streaming(websocket: WebSocket, stream_id: str):
                 
             if "bytes" in message and message.get("bytes"):
                 audio_chunk = message["bytes"]
+                logging.debug(f"📊 Streaming audio chunk: {len(audio_chunk)} bytes")
                 # Send audio to streaming STT (no batching, real-time processing)
                 await stream_manager.send_audio(f"streaming-{stream_id}", audio_chunk)
                 

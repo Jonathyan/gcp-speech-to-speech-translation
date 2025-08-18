@@ -31,7 +31,7 @@ spec:
       
       containers:
       - name: hybrid-stt-service
-        image: gcr.io/lfhs-translate/hybrid-stt-service:20250815-162021
+        image: gcr.io/lfhs-translate/hybrid-stt-service:20250818-153604
         
         ports:
         - containerPort: 8080

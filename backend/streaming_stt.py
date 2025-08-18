@@ -78,6 +78,7 @@ class StreamingSpeechToText:
             self._request_stream = self._create_request_stream(streaming_config)
             
             # Start streaming recognition
+            # FINAL FIX: streaming_recognize just takes the request iterator
             self._response_stream = self.client.streaming_recognize(self._request_stream)
             
             # Start background task to handle responses

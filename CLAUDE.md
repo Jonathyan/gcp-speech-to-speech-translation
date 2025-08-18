@@ -82,4 +82,6 @@ The project uses Test-Driven Development with comprehensive test coverage:
 
 When making changes, run the appropriate test suite first to understand current behavior, then implement changes while maintaining test coverage.
 
-Gebruik Context7 (mcp) om met de laatste documentatie te werken.
+Use  Context7 (mcp) to work with the latest documentations.
+
+Don't keep backwards compatibility unless explicitly stated in the project. Keep it simple when possible, rather then creating additional complexity when it is not needed. 
