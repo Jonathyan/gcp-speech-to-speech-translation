@@ -1,0 +1,25 @@
+# Ignore frontend files during backend deployment
+frontend/
+*.js
+src/
+dist/
+node_modules/
+package.json
+package-lock.json
+build.js
+firebase.json
+.firebaserc
+.firebase/
+
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Docs and plans  
+*.md
+plan/
+
+# Test files
+test_*.py
+tests/

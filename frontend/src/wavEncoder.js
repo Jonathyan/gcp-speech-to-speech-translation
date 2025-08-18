@@ -111,7 +111,7 @@ class ProfessionalAudioRecorder {
         this.onDataAvailable = null;
         this.chunkBuffer = [];
         this.chunkSize = config.chunkSize || 2048; // Reduced from 4096 for lower latency
-        this.chunkIntervalMs = config.chunkIntervalMs || 250; // CRITICAL FIX: 250ms instead of 2000ms!
+        this.chunkIntervalMs = config.chunkIntervalMs || 100; // ULTRA FAST: 100ms for real-time
         this.lastChunkTime = 0;
         
         console.log(`ProfessionalAudioRecorder initialized: chunkSize=${this.chunkSize}, chunkInterval=${this.chunkIntervalMs}ms`);
@@ -119,22 +119,29 @@ class ProfessionalAudioRecorder {
 
     /**
      * Start recording audio
-     * @param {object} constraints - Audio constraints
+     * @param {MediaStream|object} streamOrConstraints - Existing stream or audio constraints
      * @returns {Promise<void>}
      */
-    async startRecording(constraints = {}) {
+    async startRecording(streamOrConstraints = {}) {
         try {
-            // Request microphone access
-            this.mediaStream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    sampleRate: 16000,
-                    channelCount: 1,
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                    ...constraints.audio
-                }
-            });
+            // Use existing stream or request microphone access
+            if (streamOrConstraints instanceof MediaStream) {
+                this.mediaStream = streamOrConstraints;
+                console.log('📡 Using provided MediaStream for ProfessionalAudioRecorder');
+            } else {
+                // Request microphone access
+                this.mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        ...streamOrConstraints.audio
+                    }
+                });
+                console.log('🎤 Created new MediaStream for ProfessionalAudioRecorder');
+            }
 
             // Create audio context with optimal settings
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
@@ -151,6 +158,7 @@ class ProfessionalAudioRecorder {
             
             // Set up audio processing
             this.processorNode.onaudioprocess = (event) => {
+                console.log(`🎵 AUDIO EVENT FIRED! isRecording=${this.isRecording}`);
                 if (!this.isRecording) return;
                 
                 const inputBuffer = event.inputBuffer;
@@ -161,9 +169,15 @@ class ProfessionalAudioRecorder {
                 
                 // Check if it's time to send a chunk
                 const now = Date.now();
-                if (now - this.lastChunkTime >= this.chunkIntervalMs) {
+                const timeSinceLastChunk = now - this.lastChunkTime;
+                console.log(`⏱️ Audio timing: ${timeSinceLastChunk}ms since last chunk (threshold: ${this.chunkIntervalMs}ms)`);
+                
+                if (timeSinceLastChunk >= this.chunkIntervalMs) {
+                    console.log(`✅ Processing chunk buffer (${this.chunkBuffer.length} chunks accumulated)`);
                     this._processChunkBuffer();
                     this.lastChunkTime = now;
+                } else {
+                    console.log(`⏸️ Waiting - only ${timeSinceLastChunk}ms passed, need ${this.chunkIntervalMs}ms`);
                 }
             };
 
@@ -176,6 +190,12 @@ class ProfessionalAudioRecorder {
             
             console.log('Professional audio recording started with Web Audio API');
             console.log(`Sample rate: ${this.audioContext.sampleRate}Hz, Chunk size: ${this.chunkSize}`);
+            console.log(`🔧 ScriptProcessorNode connected. Waiting for audio events...`);
+            
+            // Test if audio processing is working
+            setTimeout(() => {
+                console.log(`🔍 DEBUG: After 2s - isRecording=${this.isRecording}, chunkBuffer.length=${this.chunkBuffer.length}`);
+            }, 2000);
 
         } catch (error) {
             console.error('Failed to start professional audio recording:', error);
@@ -239,20 +259,42 @@ class ProfessionalAudioRecorder {
             offset += chunk.length;
         }
 
-        // Encode to WAV format
-        const wavData = this.wavEncoder.encode(combinedBuffer);
+        // CRITICAL FIX: Send raw LINEAR16 audio, not WAV-encoded
+        // Google Cloud Speech expects raw PCM data, not WAV format
+        const rawLinear16Data = this._convertToLinear16(combinedBuffer);
         
-        // Create blob and call callback
-        const blob = new Blob([wavData], { type: 'audio/wav' });
+        // Create blob with raw audio data (no WAV headers)
+        const blob = new Blob([rawLinear16Data], { type: 'application/octet-stream' });
         
         if (this.onDataAvailable) {
+            console.log(`🔊 Calling audio data callback with ${blob.size} bytes blob`);
             this.onDataAvailable({ data: blob });
+        } else {
+            console.warn('⚠️ No onDataAvailable callback set!');
         }
 
         // Clear buffer for next chunk
         this.chunkBuffer = [];
         
-        console.log(`Processed audio chunk: ${totalLength} samples → ${wavData.byteLength} bytes WAV`);
+        console.log(`Processed audio chunk: ${totalLength} samples → ${rawLinear16Data.byteLength} bytes raw LINEAR16`);
+    }
+
+    /**
+     * Convert Float32Array audio to raw LINEAR16 format (16-bit signed PCM)
+     * This is what Google Cloud Speech-to-Text expects for LINEAR16 encoding
+     */
+    _convertToLinear16(float32Data) {
+        const buffer = new ArrayBuffer(float32Data.length * 2); // 16-bit = 2 bytes per sample
+        const view = new DataView(buffer);
+        
+        for (let i = 0; i < float32Data.length; i++) {
+            // Convert float32 [-1.0, 1.0] to int16 [-32768, 32767]
+            const sample = Math.max(-1, Math.min(1, float32Data[i])); // Clamp to valid range
+            const int16Sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+            view.setInt16(i * 2, int16Sample, true); // true = little-endian
+        }
+        
+        return buffer;
     }
 
     /**

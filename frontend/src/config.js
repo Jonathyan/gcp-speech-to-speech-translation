@@ -3,7 +3,7 @@ const CONFIG = {
   // WebSocket URLs
   WEBSOCKET_URL: {
     development: 'ws://localhost:8000',
-    production: 'wss://streaming-stt-service-980225887796.europe-west1.run.app'
+    production: 'wss://streaming-stt-service-ysw2dobxea-ew.a.run.app'
   },
   
   // Connection settings
@@ -21,7 +21,7 @@ const CONFIG = {
   
   // Audio settings - Phase 3: Real-time optimized for speech translation
   AUDIO: {
-    CHUNK_INTERVAL_MS: 250,  // 250ms - optimal for real-time translation (8x faster than before)
+    CHUNK_INTERVAL_MS: 100,  // 100ms - ultra-fast for Google Cloud Speech real-time requirements
     CHUNK_SIZE: 2048,        // 2KB chunks for lower latency processing
     MAX_CHUNK_SIZE: 150 * 1024, // 150KB - larger chunks for WAV
     AUDIO_CONSTRAINTS: {

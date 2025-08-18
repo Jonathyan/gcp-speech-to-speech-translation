@@ -307,16 +307,23 @@ function startRecordingAfterConnection(websocket, stream, streamId) {
     broadcastRecorder = new window.AppAudio.AudioRecorder(stream, {
       onDataAvailable: async (data) => {
         try {
+          console.log(`🎧 UI received audio data:`, data);
           const arrayBuffer = await window.AppAudio.convertAudioChunk(data);
+          console.log(`🔄 Converted to ArrayBuffer:`, arrayBuffer.byteLength, 'bytes');
           const validation = window.AppAudio.validateAudioChunk(arrayBuffer);
+          console.log(`✅ Validation result:`, validation);
           
           if (validation.isValid) {
+            console.log(`📡 Sending ${arrayBuffer.byteLength} bytes via WebSocket...`);
             const sendResult = window.AppConnection.sendAudioChunk(websocket, arrayBuffer);
+            console.log(`📤 WebSocket send result:`, sendResult);
             if (sendResult.success) {
               updateStatus(`🔴 Uitzending actief - Stream ID: ${streamId} - ${validation.size} bytes verzonden`);
             } else {
               console.warn('Failed to send audio:', sendResult.error);
             }
+          } else {
+            console.warn('⚠️ Audio validation failed:', validation);
           }
         } catch (error) {
           console.error('Audio processing error:', error);

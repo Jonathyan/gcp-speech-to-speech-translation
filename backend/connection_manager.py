@@ -134,3 +134,13 @@ class ConnectionManager:
             logger.info(f"Cleaned up {dead_count} dead connections from stream '{stream_id}'")
         
         return dead_count
+
+    def get_active_streams_count(self) -> int:
+        """
+        Get the number of active streams.
+        
+        Returns:
+            Number of streams with active listeners
+        """
+        with self._lock:
+            return len(self._streams)

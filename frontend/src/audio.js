@@ -151,8 +151,24 @@ class AudioRecorder {
       // Phase 3: Use Web Audio API with optimized configuration
       this.recorder = new window.ProfessionalAudioRecorder(chunkConfig);
       this.recorder.setOnDataAvailable((event) => {
-        if (this.onDataCallback && event.data.size > 0) {
-          this.onDataCallback(event.data);
+        console.log(`📡 AudioRecorder received callback:`, event);
+        if (this.onDataCallback && event.data && event.data.size > 0) {
+          console.log(`📤 Forwarding ${event.data.size} bytes to UI callback`);
+          console.log(`🔍 UI Callback type:`, typeof this.onDataCallback);
+          console.log(`🔍 Calling UI callback with:`, event.data);
+          // ProfessionalAudioRecorder sends { data: blob }, make it compatible with MediaRecorder format
+          try {
+            this.onDataCallback(event.data);
+            console.log(`✅ UI callback executed successfully`);
+          } catch (error) {
+            console.error(`❌ UI callback execution failed:`, error);
+          }
+        } else {
+          console.warn('⚠️ AudioRecorder: No callback or empty data', {
+            hasCallback: !!this.onDataCallback,
+            hasData: !!event.data,
+            dataSize: event.data?.size
+          });
         }
       });
       console.log(`Using Professional Audio Recorder with optimized config: ${chunkConfig.chunkIntervalMs}ms chunks`);
@@ -293,8 +309,8 @@ class AudioRecorder {
     if (!this.isRecording) {
       try {
         if (this.recorder) {
-          // Phase 2: Web Audio API recorder
-          await this.recorder.startRecording({ audio: true });
+          // Phase 2: Web Audio API recorder - pass the existing stream
+          await this.recorder.startRecording(this.stream);
         } else {
           // Fallback: MediaRecorder
           this.mediaRecorder.start(this.timeslice);
