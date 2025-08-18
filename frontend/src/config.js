@@ -3,7 +3,7 @@ const CONFIG = {
   // WebSocket URLs
   WEBSOCKET_URL: {
     development: 'ws://localhost:8000',
-    production: 'wss://hybrid-stt-service-980225887796.europe-west1.run.app'
+    production: 'wss://hybrid-stt-service-ysw2dobxea-ew.a.run.app'
   },
   
   // Connection settings
@@ -19,21 +19,24 @@ const CONFIG = {
     buttonDebounceDelay: 300
   },
   
-  // Audio settings
+  // Audio settings - Phase 3: Real-time optimized for speech translation
   AUDIO: {
-    CHUNK_INTERVAL_MS: 1000,  // 1s intervals - let Google Cloud handle format detection
-    MAX_CHUNK_SIZE: 100 * 1024, // 100KB
+    CHUNK_INTERVAL_MS: 250,  // 250ms - optimal for real-time translation (8x faster than before)
+    CHUNK_SIZE: 2048,        // 2KB chunks for lower latency processing
+    MAX_CHUNK_SIZE: 150 * 1024, // 150KB - larger chunks for WAV
     AUDIO_CONSTRAINTS: {
       audio: {
-        sampleRate: 16000,
-        channelCount: 1,
+        sampleRate: 16000,        // Phase 2: Optimal for Google Cloud STT
+        channelCount: 1,          // Mono for optimal recognition
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true
       }
     },
-    // Prioritize WAV for Google Cloud compatibility, fallback to WebM if needed
-    SUPPORTED_MIME_TYPES: ['audio/wav', 'audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']
+    // Phase 2: WAV first for Professional Audio Recorder, WebM fallback for MediaRecorder
+    SUPPORTED_MIME_TYPES: ['audio/wav', 'audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'],
+    // Phase 2: Enable Web Audio API by default
+    USE_WEB_AUDIO_API: true
   }
 };
 
@@ -84,7 +87,8 @@ function getAudioConstraints() {
  */
 function getAudioChunkConfig() {
   return {
-    intervalMs: CONFIG.AUDIO.CHUNK_INTERVAL_MS,
+    chunkIntervalMs: CONFIG.AUDIO.CHUNK_INTERVAL_MS,
+    chunkSize: CONFIG.AUDIO.CHUNK_SIZE,
     maxSize: CONFIG.AUDIO.MAX_CHUNK_SIZE
   };
 }

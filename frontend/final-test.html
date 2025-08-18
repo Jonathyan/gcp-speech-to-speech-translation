@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Final System Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 1000px; margin: 0 auto; }
+        .test-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
+        .test-section { border: 1px solid #ddd; padding: 15px; border-radius: 5px; }
+        .status { padding: 8px; margin: 5px 0; border-radius: 3px; font-size: 14px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        .warning { background: #fff3cd; color: #856404; }
+        button { margin: 5px; padding: 10px 20px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .audio-viz { height: 50px; background: #f0f0f0; margin: 10px 0; display: flex; align-items: center; justify-content: center; border-radius: 5px; }
+        h3 { margin-top: 0; color: #333; }
+        #results { max-height: 200px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <h1>🎯 Final System Test - Speech-to-Speech Translation</h1>
+    
+    <div class="test-section">
+        <h3>System Status</h3>
+        <div id="system-status"></div>
+    </div>
+    
+    <div class="test-grid">
+        <div class="test-section">
+            <h3>🎤 Speaker (Dutch)</h3>
+            <input type="text" id="speaker-stream-id" placeholder="Stream ID" value="demo-stream">
+            <br><br>
+            <button onclick="startSpeaker()" id="speaker-btn">Start Speaking</button>
+            <button onclick="stopSpeaker()" id="stop-speaker-btn" disabled>Stop</button>
+            <div id="speaker-status" class="status info">Ready to broadcast</div>
+            <div id="speaker-viz" class="audio-viz">🔇 Not recording</div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🎧 Listener (English)</h3>
+            <input type="text" id="listener-stream-id" placeholder="Stream ID" value="demo-stream">
+            <br><br>
+            <button onclick="startListener()" id="listener-btn">Start Listening</button>
+            <button onclick="stopListener()" id="stop-listener-btn" disabled>Stop</button>
+            <div id="listener-status" class="status info">Ready to listen</div>
+            <div id="listener-viz" class="audio-viz">🔇 Not connected</div>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h3>📊 Test Results</h3>
+        <button onclick="runAutomatedTest()">Run Automated Test</button>
+        <button onclick="clearResults()">Clear Results</button>
+        <div id="results"></div>
+    </div>
+    
+    <script>
+        let speakerWs = null;
+        let listenerWs = null;
+        let mediaRecorder = null;
+        let audioContext = null;
+        let audioQueue = [];
+        let isPlaying = false;
+        
+        function log(message, type = 'info') {
+            const results = document.getElementById('results');
+            const entry = document.createElement('div');
+            entry.className = `status ${type}`;
+            entry.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            results.insertBefore(entry, results.firstChild);
+        }
+        
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+        
+        async function checkSystemStatus() {
+            const statusDiv = document.getElementById('system-status');
+            statusDiv.className = 'status info';
+            statusDiv.innerHTML = 'Checking system...';
+            
+            try {
+                const response = await fetch('http://localhost:8000/health/full');
+                const data = await response.json();
+                
+                if (data.status === 'ok') {
+                    statusDiv.className = 'status success';
+                    statusDiv.innerHTML = `✅ All systems operational<br>
+                        Speech: ${data.services.speech} | 
+                        Translation: ${data.services.translation} | 
+                        TTS: ${data.services.tts}`;
+                } else {
+                    statusDiv.className = 'status warning';
+                    statusDiv.innerHTML = '⚠️ System partially ready: ' + JSON.stringify(data.services);
+                }
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = '❌ Backend not accessible';
+            }
+        }
+        
+        async function startSpeaker() {
+            const streamId = document.getElementById('speaker-stream-id').value;
+            const statusDiv = document.getElementById('speaker-status');
+            const vizDiv = document.getElementById('speaker-viz');
+            
+            try {
+                // Get microphone
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+                
+                // Connect WebSocket
+                speakerWs = new WebSocket(`ws://localhost:8000/ws/speak/${streamId}`);
+                
+                speakerWs.onopen = () => {
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = `✅ Connected as speaker to: ${streamId}`;
+                    document.getElementById('speaker-btn').disabled = true;
+                    document.getElementById('stop-speaker-btn').disabled = false;
+                    
+                    // Start recording
+                    const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+                    mediaRecorder = new MediaRecorder(stream, { mimeType });
+                    
+                    let chunkCount = 0;
+                    mediaRecorder.ondataavailable = (event) => {
+                        if (event.data.size > 0 && speakerWs.readyState === WebSocket.OPEN) {
+                            speakerWs.send(event.data);
+                            chunkCount++;
+                            vizDiv.innerHTML = `🎤 Recording... (${chunkCount} chunks sent)`;
+                            log(`Sent audio chunk #${chunkCount}: ${event.data.size} bytes`, 'info');
+                        }
+                    };
+                    
+                    mediaRecorder.start(250); // Send every 250ms
+                    vizDiv.innerHTML = '🎤 Recording...';
+                    log(`Started broadcasting on stream: ${streamId}`, 'success');
+                };
+                
+                speakerWs.onerror = (error) => {
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = '❌ Connection error';
+                    log('Speaker WebSocket error', 'error');
+                };
+                
+                speakerWs.onclose = () => {
+                    vizDiv.innerHTML = '🔇 Not recording';
+                    log('Speaker disconnected', 'info');
+                };
+                
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `❌ Error: ${error.message}`;
+                log(`Failed to start speaker: ${error.message}`, 'error');
+            }
+        }
+        
+        function stopSpeaker() {
+            if (mediaRecorder) {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                mediaRecorder = null;
+            }
+            if (speakerWs) {
+                speakerWs.close();
+                speakerWs = null;
+            }
+            
+            document.getElementById('speaker-status').className = 'status info';
+            document.getElementById('speaker-status').textContent = 'Disconnected';
+            document.getElementById('speaker-btn').disabled = false;
+            document.getElementById('stop-speaker-btn').disabled = true;
+            document.getElementById('speaker-viz').innerHTML = '🔇 Not recording';
+            log('Speaker stopped', 'info');
+        }
+        
+        async function startListener() {
+            const streamId = document.getElementById('listener-stream-id').value;
+            const statusDiv = document.getElementById('listener-status');
+            const vizDiv = document.getElementById('listener-viz');
+            
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            listenerWs = new WebSocket(`ws://localhost:8000/ws/listen/${streamId}`);
+            
+            listenerWs.onopen = () => {
+                statusDiv.className = 'status success';
+                statusDiv.textContent = `✅ Connected as listener to: ${streamId}`;
+                document.getElementById('listener-btn').disabled = true;
+                document.getElementById('stop-listener-btn').disabled = false;
+                vizDiv.innerHTML = '👂 Listening...';
+                log(`Started listening on stream: ${streamId}`, 'success');
+            };
+            
+            listenerWs.onmessage = async (event) => {
+                if (event.data instanceof Blob) {
+                    const size = event.data.size;
+                    vizDiv.innerHTML = `🔊 Received: ${size} bytes`;
+                    log(`Received translated audio: ${size} bytes`, 'success');
+                    
+                    try {
+                        const arrayBuffer = await event.data.arrayBuffer();
+                        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                        
+                        // Add to queue and play
+                        audioQueue.push(audioBuffer);
+                        playNextInQueue();
+                        
+                        log(`Playing translated audio (${audioBuffer.duration.toFixed(2)}s)`, 'success');
+                    } catch (error) {
+                        log(`Failed to play audio: ${error.message}`, 'error');
+                    }
+                }
+            };
+            
+            listenerWs.onerror = (error) => {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = '❌ Connection error';
+                log('Listener WebSocket error', 'error');
+            };
+            
+            listenerWs.onclose = () => {
+                vizDiv.innerHTML = '🔇 Not connected';
+                log('Listener disconnected', 'info');
+            };
+        }
+        
+        function playNextInQueue() {
+            if (isPlaying || audioQueue.length === 0) return;
+            
+            isPlaying = true;
+            const buffer = audioQueue.shift();
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.destination);
+            
+            source.onended = () => {
+                isPlaying = false;
+                playNextInQueue(); // Play next if available
+            };
+            
+            source.start();
+        }
+        
+        function stopListener() {
+            if (listenerWs) {
+                listenerWs.close();
+                listenerWs = null;
+            }
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+            
+            audioQueue = [];
+            isPlaying = false;
+            
+            document.getElementById('listener-status').className = 'status info';
+            document.getElementById('listener-status').textContent = 'Disconnected';
+            document.getElementById('listener-btn').disabled = false;
+            document.getElementById('stop-listener-btn').disabled = true;
+            document.getElementById('listener-viz').innerHTML = '🔇 Not connected';
+            log('Listener stopped', 'info');
+        }
+        
+        async function runAutomatedTest() {
+            log('=== Starting Automated Test ===', 'info');
+            
+            // 1. Check system
+            await checkSystemStatus();
+            
+            // 2. Test WebSocket connection
+            log('Testing WebSocket connection...', 'info');
+            const testWs = new WebSocket('ws://localhost:8000/ws/speak/test');
+            
+            await new Promise((resolve) => {
+                testWs.onopen = () => {
+                    log('✅ WebSocket connection successful', 'success');
+                    testWs.close();
+                    resolve();
+                };
+                testWs.onerror = () => {
+                    log('❌ WebSocket connection failed', 'error');
+                    resolve();
+                };
+                setTimeout(resolve, 3000);
+            });
+            
+            // 3. Test microphone
+            log('Testing microphone access...', 'info');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                log('✅ Microphone access granted', 'success');
+                stream.getTracks().forEach(track => track.stop());
+            } catch (error) {
+                log('❌ Microphone access denied', 'error');
+            }
+            
+            // 4. Test end-to-end
+            log('Testing end-to-end pipeline...', 'info');
+            const testStreamId = 'automated-test-' + Date.now();
+            
+            // Connect listener
+            const listener = new WebSocket(`ws://localhost:8000/ws/listen/${testStreamId}`);
+            
+            await new Promise((resolve) => {
+                listener.onopen = resolve;
+                setTimeout(resolve, 2000);
+            });
+            
+            if (listener.readyState === WebSocket.OPEN) {
+                log('✅ Test listener connected', 'success');
+                
+                // Connect speaker
+                const speaker = new WebSocket(`ws://localhost:8000/ws/speak/${testStreamId}`);
+                
+                await new Promise((resolve) => {
+                    speaker.onopen = resolve;
+                    setTimeout(resolve, 2000);
+                });
+                
+                if (speaker.readyState === WebSocket.OPEN) {
+                    log('✅ Test speaker connected', 'success');
+                    
+                    // Send test data
+                    const testData = new Blob(['test'], { type: 'audio/webm' });
+                    speaker.send(testData);
+                    log('Sent test audio', 'info');
+                    
+                    // Wait for response
+                    await new Promise((resolve) => {
+                        listener.onmessage = (event) => {
+                            if (event.data instanceof Blob) {
+                                log(`✅ Received response: ${event.data.size} bytes`, 'success');
+                                resolve();
+                            }
+                        };
+                        setTimeout(() => {
+                            log('⚠️ No response received (timeout)', 'warning');
+                            resolve();
+                        }, 10000);
+                    });
+                    
+                    speaker.close();
+                }
+                
+                listener.close();
+            }
+            
+            log('=== Automated Test Complete ===', 'info');
+        }
+        
+        // Check system on load
+        window.addEventListener('load', () => {
+            checkSystemStatus();
+            log('System ready for testing', 'info');
+            log('Instructions: Enter the same Stream ID in both Speaker and Listener, then start both', 'info');
+        });
+    </script>
+</body>
+</html>

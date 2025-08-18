@@ -262,63 +262,85 @@ async function startBroadcast() {
   }
   
   broadcastStream = micResult.stream;
-  currentStreamId = window.AppConnection.generateStreamId();
+  // Get stream ID from input field or generate new one
+  const streamIdInput = document.getElementById('stream-id');
+  currentStreamId = streamIdInput ? streamIdInput.value.trim() || window.AppConnection.generateStreamId() : window.AppConnection.generateStreamId();
   
-  // Setup WebSocket connection
+  // Setup WebSocket connection with streaming mode for better performance (Phase 3 optimization)
   updateStatus('Verbinden...');
   const url = window.AppConfig.getWebSocketURL();
-  window.AppConnection.connectWebSocket(url, 'broadcast', currentStreamId);
+  window.AppConnection.connectWebSocket(url, 'streaming', currentStreamId);
   
-  // Wait for connection to be established
+  // Wait longer for connection to be established
   setTimeout(async () => {
     const websocket = window.AppConnection.getCurrentWebSocket();
     if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+      // Give it more time if still connecting
+      if (websocket && websocket.readyState === WebSocket.CONNECTING) {
+        setTimeout(async () => {
+          const ws = window.AppConnection.getCurrentWebSocket();
+          if (!ws || ws.readyState !== WebSocket.OPEN) {
+            updateStatus('❌ Verbinding mislukt');
+            window.AppAudio.stopAudioStream(broadcastStream);
+            return;
+          }
+          startRecordingAfterConnection(ws, broadcastStream, currentStreamId);
+        }, 2000); // Wait 2 more seconds
+        return;
+      }
       updateStatus('❌ Verbinding mislukt');
       window.AppAudio.stopAudioStream(broadcastStream);
       return;
     }
     
-    try {
-      // Start audio recording
-      broadcastRecorder = new window.AppAudio.AudioRecorder(broadcastStream, {
-        onDataAvailable: async (data) => {
-          try {
-            const arrayBuffer = await window.AppAudio.convertAudioChunk(data);
-            const validation = window.AppAudio.validateAudioChunk(arrayBuffer);
-            
-            if (validation.isValid) {
-              const sendResult = window.AppConnection.sendAudioChunk(websocket, arrayBuffer);
-              if (sendResult.success) {
-                updateStatus(`🔴 Uitzending actief - ${validation.size} bytes verzonden`);
-              } else {
-                console.warn('Failed to send audio:', sendResult.error);
-              }
-            }
-          } catch (error) {
-            console.error('Audio processing error:', error);
-          }
-        },
-        onError: (error) => {
-          console.error('Recording error:', error);
-          stopBroadcast();
-        }
-      });
-      
-      broadcastRecorder.start();
-      isBroadcasting = true;
-      
-      // Update UI with recording indicator
-      setLoadingState(false);
-      showRecordingIndicator(true);
-      updateStatus(`🔴 Uitzending actief - Stream ID: ${currentStreamId}`);
-      const startButton = document.getElementById('start-broadcast');
-      if (startButton) startButton.textContent = 'Stop Uitzending';
-      
-    } catch (error) {
-      updateStatus(`❌ Opname setup fout: ${error.message}`);
-      window.AppAudio.stopAudioStream(broadcastStream);
-    }
+    // Connection successful, start recording
+    startRecordingAfterConnection(websocket, broadcastStream, currentStreamId);
   }, 1000);
+}
+
+/**
+ * Start recording after connection is established
+ */
+function startRecordingAfterConnection(websocket, stream, streamId) {
+  try {
+    // Start audio recording
+    broadcastRecorder = new window.AppAudio.AudioRecorder(stream, {
+      onDataAvailable: async (data) => {
+        try {
+          const arrayBuffer = await window.AppAudio.convertAudioChunk(data);
+          const validation = window.AppAudio.validateAudioChunk(arrayBuffer);
+          
+          if (validation.isValid) {
+            const sendResult = window.AppConnection.sendAudioChunk(websocket, arrayBuffer);
+            if (sendResult.success) {
+              updateStatus(`🔴 Uitzending actief - Stream ID: ${streamId} - ${validation.size} bytes verzonden`);
+            } else {
+              console.warn('Failed to send audio:', sendResult.error);
+            }
+          }
+        } catch (error) {
+          console.error('Audio processing error:', error);
+        }
+      },
+      onError: (error) => {
+        console.error('Recording error:', error);
+        stopBroadcast();
+      }
+    });
+    
+    broadcastRecorder.start();
+    isBroadcasting = true;
+    
+    // Update UI with recording indicator
+    setLoadingState(false);
+    updateStatus(`🔴 Uitzending actief - Stream ID: ${streamId}`);
+    document.getElementById('start-broadcast').textContent = 'Stop Uitzending';
+    document.getElementById('disconnect').disabled = false;
+  } catch (error) {
+    console.error('Recording setup error:', error);
+    updateStatus(`❌ Opname setup fout: ${error.message}`);
+    window.AppAudio.stopAudioStream(stream);
+  }
 }
 
 /**
@@ -365,13 +387,9 @@ function joinListener() {
     return;
   }
   
-  const streamId = prompt('Voer stream ID in (of laat leeg voor test-stream):', 'test-stream');
-  if (streamId === null) {
-    setLoadingState(false);
-    return;
-  }
-  
-  currentStreamId = streamId || 'test-stream';
+  // Get stream ID from input field
+  const streamIdInput = document.getElementById('stream-id');
+  currentStreamId = streamIdInput ? streamIdInput.value.trim() || 'test-stream' : 'test-stream';
   
   try {
     // Initialize AudioPlayer and connect

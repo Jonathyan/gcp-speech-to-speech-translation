@@ -11,7 +11,11 @@ const path = require('path');
 // File order for concatenation
 const jsFiles = [
     'src/config.js',
-    'src/utils.js', 
+    'src/utils.js',
+    'src/diagnostics.js',
+    'src/wavEncoder.js',    // Phase 2: WAV encoder must load before audio.js
+    'src/audio.js',
+    'src/audioPlayer.js',
     'src/connection.js',
     'src/ui.js',
     'src/app.js'
@@ -22,8 +26,8 @@ function minifyJS(code) {
     return code
         .replace(/\/\*[\s\S]*?\*\//g, '') // Remove block comments
         .replace(/\/\/.*$/gm, '') // Remove line comments
-        .replace(/\s+/g, ' ') // Collapse whitespace
-        .replace(/;\s*}/g, ';}') // Clean up semicolons
+        .replace(/\n\s+/g, '\n') // Remove leading spaces from new lines but keep line breaks
+        .replace(/\s{3,}/g, ' ') // Only collapse 3+ spaces to single space
         .trim();
 }
 
@@ -42,7 +46,17 @@ function build() {
     jsFiles.forEach(file => {
         const filePath = path.join(__dirname, file);
         if (fs.existsSync(filePath)) {
-            const content = fs.readFileSync(filePath, 'utf8');
+            let content = fs.readFileSync(filePath, 'utf8');
+            
+            // Replace environment detection for production build
+            if (file === 'src/config.js') {
+                content = content.replace(
+                    /return window\.location\.hostname === 'localhost' \? 'development' : 'production';/g,
+                    "return 'production';"
+                );
+                console.log('✓ Set production environment in config.js');
+            }
+            
             concatenated += content + '\n';
             console.log(`✓ Added ${file}`);
         } else {
@@ -54,9 +68,8 @@ function build() {
     fs.writeFileSync(path.join(distDir, 'app.js'), concatenated);
     console.log('✓ Created dist/app.js');
     
-    // Write minified version
-    const minified = minifyJS(concatenated);
-    fs.writeFileSync(path.join(distDir, 'app.min.js'), minified);
+    // Write "minified" version (just copy concatenated for safety)
+    fs.writeFileSync(path.join(distDir, 'app.min.js'), concatenated);
     console.log('✓ Created dist/app.min.js');
     
     // Copy HTML with updated script references
@@ -65,7 +78,7 @@ function build() {
     
     // Replace multiple script tags with single minified version
     html = html.replace(
-        /<script src="\.\.\/src\/config\.js"><\/script>\s*<script src="\.\.\/src\/utils\.js"><\/script>\s*<script src="\.\.\/src\/connection\.js"><\/script>\s*<script src="\.\.\/src\/ui\.js"><\/script>\s*<script src="\.\.\/src\/app\.js"><\/script>/,
+        /<script src="\.\.\/src\/[\w\.]+"><\/script>[\s\n]*(<script src="\.\.\/src\/[\w\.]+"><\/script>[\s\n]*)*/g,
         '<script src="app.min.js"></script>'
     );
     

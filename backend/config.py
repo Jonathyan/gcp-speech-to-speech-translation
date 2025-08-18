@@ -37,9 +37,9 @@ class AppSettings(BaseSettings):
     TTS_AUDIO_FORMAT: str = "MP3"  # MP3, LINEAR16, OGG_OPUS
     TTS_TIMEOUT_S: float = 10.0
 
-    # Circuit Breaker-instellingen - RELAXED for multi-sentence translation
-    CIRCUIT_BREAKER_FAIL_MAX: int = 10  # Increased from 5 to 10 for multi-sentence stability
-    CIRCUIT_BREAKER_RESET_TIMEOUT_S: int = 15  # Reduced from 30s to 15s for faster recovery
+    # Circuit Breaker-instellingen - DEBUGGING: Very relaxed for troubleshooting
+    CIRCUIT_BREAKER_FAIL_MAX: int = 50  # Temporarily very high for debugging
+    CIRCUIT_BREAKER_RESET_TIMEOUT_S: int = 10  # Faster recovery for testing
 
     # Fallback-instellingen - test marker for frontend beep generation
     FALLBACK_AUDIO: bytes = b'TEST_AUDIO_BEEP_MARKER:PIPELINE_ERROR_FALLBACK'

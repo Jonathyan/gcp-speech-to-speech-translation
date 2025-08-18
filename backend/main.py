@@ -11,8 +11,9 @@ from google.cloud import speech
 from google.cloud import translate_v2 as translate
 from google.cloud import texttospeech
 
-# Only import connection manager - minimal dependencies
+# Core dependencies - simplified architecture
 from .connection_manager import ConnectionManager
+from .streaming_stt import stream_manager
 
 # Minimal settings
 FALLBACK_AUDIO = b'TEST_AUDIO_BEEP_MARKER:PIPELINE_ERROR_FALLBACK'
@@ -258,6 +259,71 @@ async def websocket_listener(websocket: WebSocket, stream_id: str):
     except Exception as e:
         logging.error(f"❌ Listener error: {e}")
         connection_manager.remove_listener(stream_id, websocket)
+
+
+@app.websocket("/ws/stream/{stream_id}")
+async def websocket_streaming(websocket: WebSocket, stream_id: str):
+    """New streaming endpoint using existing streaming STT infrastructure"""
+    await websocket.accept()
+    client_id = f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "testclient"
+    message_count = 0
+    
+    logging.info(f"🎙️ Streaming speaker connected: {client_id} → stream '{stream_id}'")
+    
+    # Set up transcript callback for real-time processing
+    async def handle_transcript(text: str, is_final: bool, confidence: float):
+        nonlocal message_count
+        if is_final and text.strip():
+            message_count += 1
+            logging.info(f"📝 Streaming transcript #{message_count} (confidence: {confidence:.2f}): '{text}'")
+            
+            try:
+                # Run through simplified translation pipeline
+                translated = await _translation_with_retry(text.strip())
+                audio_output = await _tts_with_retry(translated)
+                
+                # Broadcast to all listeners
+                await connection_manager.broadcast_to_stream(stream_id, audio_output)
+                logging.info(f"✅ Streaming message #{message_count}: Translation complete")
+                
+            except Exception as e:
+                logging.error(f"❌ Streaming pipeline error #{message_count}: {e}")
+                await connection_manager.broadcast_to_stream(stream_id, FALLBACK_AUDIO)
+    
+    async def handle_error(error):
+        logging.error(f"❌ Streaming STT error for {client_id}: {error}")
+    
+    try:
+        # Create streaming session using existing infrastructure
+        success = await stream_manager.create_stream(
+            stream_id=f"streaming-{stream_id}",
+            transcript_callback=handle_transcript,
+            error_callback=handle_error
+        )
+        
+        if not success:
+            logging.error(f"❌ Failed to create streaming session for {stream_id}")
+            await websocket.close()
+            return
+        
+        # Process incoming audio chunks
+        while True:
+            message = await websocket.receive()
+            if message["type"] == "websocket.disconnect":
+                break
+                
+            if "bytes" in message and message.get("bytes"):
+                audio_chunk = message["bytes"]
+                # Send audio to streaming STT (no batching, real-time processing)
+                await stream_manager.send_audio(f"streaming-{stream_id}", audio_chunk)
+                
+    except WebSocketDisconnect:
+        logging.info(f"🔌 Streaming speaker disconnected: {client_id} after {message_count} messages")
+    except Exception as e:
+        logging.error(f"❌ Streaming speaker error: {e}")
+    finally:
+        # Clean up streaming session
+        await stream_manager.close_stream(f"streaming-{stream_id}")
 
 
 @app.get("/health")

@@ -167,7 +167,7 @@ def convert_audio_to_linear16(audio_chunk: bytes) -> bytes:
 
 async def real_speech_to_text(audio_chunk: bytes) -> str:
     """
-    Production-ready Google Cloud Speech-to-Text API met streaming support.
+    Production-ready Google Cloud Speech-to-Text API with Phase 2 WAV support.
     """
     import os
     from google.cloud import speech
@@ -181,27 +181,42 @@ async def real_speech_to_text(audio_chunk: bytes) -> str:
     
     logging.info(f"STT: Real API call - {len(audio_chunk)} bytes, {language_code}")
     
-    # CRITICAL FIX: Skip ffmpeg conversion for WebM - use direct WEBM_OPUS
-    # Detect WebM format by header and use direct processing
-    if audio_chunk[:4] == b'\x00\x00\x00' and b'moof' in audio_chunk[:32]:
-        logging.info(f"WebM format detected - using direct WEBM_OPUS processing ({len(audio_chunk)} bytes)")
-        converted_audio = audio_chunk
-        use_raw_format = True  # Use WEBM_OPUS encoding directly
-    else:
-        # Try to convert other formats for better compatibility
-        try:
-            converted_audio = convert_audio_to_linear16(audio_chunk)
-            if len(converted_audio) > 0 and converted_audio != audio_chunk:
-                logging.info(f"Audio converted successfully: {len(audio_chunk)} → {len(converted_audio)} bytes")
-                use_raw_format = False
-            else:
-                logging.info(f"Using raw audio format - conversion not needed ({len(audio_chunk)} bytes)")
-                converted_audio = audio_chunk
-                use_raw_format = True
-        except Exception as e:
-            logging.warning(f"Audio conversion failed, using raw format: {e}")
-            converted_audio = audio_chunk
-            use_raw_format = True
+    # PHASE 2 SIMPLIFIED: Just use the audio as-is and assume it's LINEAR16 PCM
+    # This eliminates all format detection complexity
+    logging.info(f"Phase 2: Processing audio as LINEAR16 PCM - {len(audio_chunk)} bytes")
+    
+    # DEBUGGING: Check audio data characteristics
+    if len(audio_chunk) >= 16:
+        header_hex = audio_chunk[:16].hex()
+        logging.info(f"Audio header debug: {header_hex}")
+        
+        # Check if this looks like WAV data
+        if audio_chunk.startswith(b'RIFF'):
+            logging.info("Detected RIFF WAV header")
+        else:
+            # Check for patterns in raw audio data
+            import struct
+            try:
+                # Sample first few 16-bit values
+                samples = struct.unpack('<8h', audio_chunk[:16])
+                logging.info(f"First 8 PCM samples: {samples}")
+                
+                # Check if all samples are zero (silence)
+                if all(s == 0 for s in samples[:8]):
+                    logging.warning("Audio appears to be silence - all zero samples")
+                else:
+                    logging.info("Audio contains non-zero samples - should be processable")
+            except:
+                logging.warning("Could not parse audio as 16-bit PCM")
+    
+    # Check minimum audio duration for meaningful STT processing
+    # 32,768 bytes at 16kHz 16-bit = ~1 second of audio
+    min_audio_bytes = 32000  # ~1 second minimum
+    if len(audio_chunk) < min_audio_bytes:
+        logging.warning(f"Audio chunk too short for STT: {len(audio_chunk)} bytes < {min_audio_bytes} bytes minimum")
+        raise Exception(f"Audio chunk too short: {len(audio_chunk)} bytes")
+    
+    converted_audio = audio_chunk
     
     @retry(
         stop=stop_after_attempt(2),
@@ -212,17 +227,11 @@ async def real_speech_to_text(audio_chunk: bytes) -> str:
         try:
             client = speech.SpeechClient()
             
-            # Choose encoding based on conversion success and chunk size
-            if not use_raw_format:
-                # Conversion worked - use LINEAR16
-                encoding = speech.RecognitionConfig.AudioEncoding.LINEAR16
-                config_sample_rate = 16000
-                logging.info("Using LINEAR16 encoding for converted audio")
-            else:
-                # CRITICAL FIX: Use WEBM_OPUS for browser audio
-                encoding = speech.RecognitionConfig.AudioEncoding.WEBM_OPUS  
-                config_sample_rate = 48000  # Opus in WebM typically uses 48kHz
-                logging.info("Using WEBM_OPUS encoding for direct browser WebM processing")
+            # SIMPLIFIED: Always try LINEAR16 first for Phase 2 audio
+            # This should work with both WAV files and raw PCM data from Web Audio API
+            encoding = speech.RecognitionConfig.AudioEncoding.LINEAR16
+            config_sample_rate = 16000
+            logging.info("Phase 2: Using LINEAR16 encoding for all audio (simplified approach)")
             
             # Build config conditionally based on whether we specify sample rate
             config_params = {

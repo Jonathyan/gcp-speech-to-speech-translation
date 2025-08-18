@@ -96,6 +96,9 @@ function connectWebSocket(url, mode, streamId) {
   let wsUrl;
   if (mode === 'broadcast') {
     wsUrl = `${url}/ws/speak/${streamId}`;
+  } else if (mode === 'streaming') {
+    wsUrl = `${url}/ws/stream/${streamId}`;
+    console.log('🚀 Using new streaming endpoint for real-time translation');
   } else if (mode === 'listener') {
     wsUrl = `${url}/ws/listen/${streamId}`;
   } else {
@@ -131,8 +134,8 @@ function connectWebSocket(url, mode, streamId) {
     };
     
     currentWebSocket.onmessage = function(event) {
-      // Handle both text and binary messages
-      if (event.data instanceof ArrayBuffer) {
+      // Handle both text and binary messages (ArrayBuffer or Blob)
+      if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
         handleIncomingAudioData(event.data);
       } else {
         handleIncomingMessage(event.data);
@@ -186,35 +189,154 @@ function handleIncomingAudioData(audioData) {
 }
 
 /**
- * Process audio data for playback
- * @param {ArrayBuffer} audioData - Binary audio data
+ * Generate test beep using Web Audio API
+ * @param {number} frequency - Frequency in Hz (default 800Hz)
+ * @param {number} duration - Duration in seconds (default 0.3s)
+ * @returns {Promise<void>} Promise that resolves when beep is played
+ */
+async function playTestBeep(frequency = 800, duration = 0.3) {
+  try {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Create oscillator for beep sound
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    // Configure oscillator
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = frequency;
+    oscillator.type = 'sine';
+    
+    // Configure volume envelope (fade in/out to avoid clicks)
+    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+    gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.05);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+    
+    // Play beep
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + duration);
+    
+    console.log(`Test beep played: ${frequency}Hz for ${duration}s`);
+    
+    // Clean up after beep finishes
+    setTimeout(() => {
+      audioContext.close();
+    }, (duration + 0.1) * 1000);
+    
+  } catch (error) {
+    console.error('Failed to play test beep:', error);
+  }
+}
+
+/**
+ * Process audio data for playback - simplified direct playback with fallback
+ * @param {ArrayBuffer|Blob} audioData - Binary audio data
  */
 async function processAudioData(audioData) {
   try {
-    // Decode audio chunk
-    const audioBuffer = await audioPlayer.decodeAudioChunk(audioData);
+    console.log('Processing audio data:', typeof audioData, audioData.constructor.name);
     
-    // Validate audio buffer
-    const validation = audioPlayer.validateAudioBuffer(audioBuffer);
-    if (!validation.valid) {
-      console.error('Invalid audio buffer:', validation.errors);
+    // Convert to ArrayBuffer for analysis
+    let dataBuffer;
+    if (audioData instanceof ArrayBuffer) {
+      dataBuffer = audioData;
+    } else if (audioData instanceof Blob) {
+      dataBuffer = await audioData.arrayBuffer();
+    } else {
+      console.error('Unknown audio data type:', typeof audioData);
       audioStats.processingErrors++;
       return;
     }
     
-    // Add to playback queue
-    const added = audioPlayer.addToQueue(audioBuffer);
-    if (added) {
+    // Check if this is a test audio marker (only for mock TTS)
+    let isTestMarker = false;
+    try {
+      const textDecoder = new TextDecoder('utf-8', {fatal: true});
+      const dataAsText = textDecoder.decode(dataBuffer);
+      
+      if (dataAsText.startsWith('TEST_AUDIO_BEEP_MARKER:')) {
+        console.log('Test audio marker detected, playing audible beep');
+        const translatedText = dataAsText.substring('TEST_AUDIO_BEEP_MARKER:'.length);
+        console.log('Mock translated text:', translatedText);
+        
+        // Play a pleasant test beep to confirm the system is working
+        await playTestBeep(800, 0.4);
+        audioStats.chunksProcessed++;
+        return;
+      }
+    } catch (decodeError) {
+      // Decoding failed - this is binary MP3 data, not a text marker
+      console.log(`Binary MP3 data detected (${dataBuffer.byteLength} bytes), proceeding with audio playback`);
+      isTestMarker = false;
+    }
+    
+    // Skip test marker check for binary data - proceed directly to MP3 playback
+    if (dataBuffer.byteLength > 1000) { // Real MP3 files are typically larger
+      console.log(`Processing large audio file: ${dataBuffer.byteLength} bytes - likely real MP3`);
+    }
+    
+    // Handle regular audio data
+    const audioBlob = new Blob([dataBuffer], { type: 'audio/mpeg' });
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(audioUrl);
+    
+    let audioPlayed = false;
+    
+    audio.onloadeddata = () => {
+      console.log('Audio loaded, starting playback');
       audioStats.chunksProcessed++;
-      console.log('Audio chunk queued for playback');
-    } else {
-      console.warn('Failed to add audio chunk to queue');
+    };
+    
+    audio.onerror = (error) => {
+      console.error('MP3 playback failed:', error);
+      console.log('Audio blob details:', audioBlob.type, audioBlob.size, 'bytes');
       audioStats.processingErrors++;
+      URL.revokeObjectURL(audioUrl);
+      
+      // Only play beep for very small data that might be fallback audio
+      if (!audioPlayed && dataBuffer.byteLength < 1000) {
+        console.log('Small data size, playing fallback beep');
+        playTestBeep(600, 0.2);
+      } else {
+        console.log('Large MP3 data failed to play - not using fallback beep');
+      }
+    };
+    
+    audio.onended = () => {
+      URL.revokeObjectURL(audioUrl);
+      console.log('Audio playback completed');
+      audioPlayed = true;
+    };
+    
+    // Play the audio with error handling
+    try {
+      console.log(`Attempting to play MP3 audio: ${dataBuffer.byteLength} bytes`);
+      await audio.play();
+      audioPlayed = true;
+      console.log('MP3 playback started successfully');
+    } catch (playError) {
+      console.error('Audio play() failed:', playError.message, playError);
+      console.log('Play error details:', playError.name, playError.code);
+      audioStats.processingErrors++;
+      URL.revokeObjectURL(audioUrl);
+      
+      // Only use beep fallback for small/invalid data
+      if (!audioPlayed && dataBuffer.byteLength < 1000) {
+        console.log('Using beep fallback for small data');
+        await playTestBeep(600, 0.2);
+      } else {
+        console.log('Large MP3 failed - no beep fallback (likely real audio issue)');
+      }
     }
     
   } catch (error) {
-    console.error('Audio processing error:', error);
+    console.error('Audio processing error, playing error beep:', error);
     audioStats.processingErrors++;
+    
+    // Play distinctive error beep (higher frequency)
+    await playTestBeep(1200, 0.1);
   }
 }
 
@@ -299,24 +421,23 @@ function handleAudioStreamEnd() {
  */
 function initializeAudioPlayer() {
   try {
-    if (typeof AudioPlayer !== 'undefined') {
-      audioPlayer = new AudioPlayer();
-      audioPlayer.createAudioContext();
-      
-      // Reset audio statistics
-      audioStats = {
-        chunksReceived: 0,
-        bytesReceived: 0,
-        chunksProcessed: 0,
-        processingErrors: 0
-      };
-      
-      console.log('AudioPlayer initialized for listener mode');
-    } else {
-      console.error('AudioPlayer class not available');
-    }
+    // Simplified initialization for direct audio playback
+    audioPlayer = {
+      initialized: true,
+      playback: 'direct'
+    };
+    
+    // Reset audio statistics
+    audioStats = {
+      chunksReceived: 0,
+      bytesReceived: 0,
+      chunksProcessed: 0,
+      processingErrors: 0
+    };
+    
+    console.log('Direct audio player initialized for listener mode');
   } catch (error) {
-    console.error('Failed to initialize AudioPlayer:', error);
+    console.error('Failed to initialize audio player:', error);
   }
 }
 

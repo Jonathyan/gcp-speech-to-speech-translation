@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Audio Test</title>
+</head>
+<body>
+    <h1>Audio Playback Test</h1>
+    <button onclick="testWebSocket()">Test WebSocket Audio</button>
+    <button onclick="testDirectAudio()">Test Direct Audio</button>
+    <div id="status">Ready</div>
+    <audio id="testAudio" controls></audio>
+    
+    <script>
+        let ws = null;
+        
+        function log(msg) {
+            document.getElementById('status').textContent = msg;
+            console.log(msg);
+        }
+        
+        async function testWebSocket() {
+            log('Connecting to WebSocket listener...');
+            
+            try {
+                ws = new WebSocket('ws://localhost:8000/ws/listen/test-stream');
+                
+                ws.onopen = () => {
+                    log('✅ WebSocket connected - waiting for audio...');
+                };
+                
+                ws.onmessage = async (event) => {
+                    if (event.data instanceof ArrayBuffer) {
+                        log(`📦 Received audio: ${event.data.byteLength} bytes`);
+                        await playAudioBuffer(event.data);
+                    } else {
+                        log(`📝 Text message: ${event.data}`);
+                    }
+                };
+                
+                ws.onerror = (error) => {
+                    log(`❌ WebSocket error: ${error}`);
+                };
+                
+                ws.onclose = () => {
+                    log('🔌 WebSocket closed');
+                };
+                
+            } catch (error) {
+                log(`❌ Error: ${error.message}`);
+            }
+        }
+        
+        async function playAudioBuffer(arrayBuffer) {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
+                source.start();
+                log('🎵 Playing audio buffer...');
+            } catch (error) {
+                log(`❌ Audio decode error: ${error.message}`);
+                // Try direct blob approach
+                try {
+                    const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+                    const url = URL.createObjectURL(blob);
+                    const audio = document.getElementById('testAudio');
+                    audio.src = url;
+                    audio.play();
+                    log('🎵 Playing via audio element...');
+                } catch (blobError) {
+                    log(`❌ Blob audio error: ${blobError.message}`);
+                }
+            }
+        }
+        
+        function testDirectAudio() {
+            log('Testing direct audio playback...');
+            const audio = document.getElementById('testAudio');
+            audio.src = 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav';
+            audio.play().then(() => {
+                log('✅ Direct audio works');
+            }).catch(error => {
+                log(`❌ Direct audio failed: ${error.message}`);
+            });
+        }
+    </script>
+</body>
+</html>

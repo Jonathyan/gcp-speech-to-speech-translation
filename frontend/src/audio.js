@@ -125,7 +125,8 @@ function stopAudioStream(stream) {
 }
 
 /**
- * AudioRecorder class for handling MediaRecorder functionality
+ * Enhanced AudioRecorder class supporting both MediaRecorder and Web Audio API
+ * Automatically chooses the best recording method for optimal compatibility
  */
 class AudioRecorder {
   constructor(stream, options = {}) {
@@ -137,25 +138,38 @@ class AudioRecorder {
     this.maxRetries = options.maxRetries || 3;
     this.retryDelay = options.retryDelay || 1000;
     
+    // Phase 2: Choose recording method (Professional WAV encoder vs MediaRecorder)
+    this.useWebAudioAPI = options.useWebAudioAPI !== false; // Default to true
+    this.recorder = null;
+    
     // Get configuration
     const chunkConfig = window.AppConfig ? 
       window.AppConfig.getAudioChunkConfig() : 
-      { intervalMs: 250 };
+      { chunkIntervalMs: 250, chunkSize: 2048, maxSize: 150 * 1024 };
     
-    // Determine best audio format
-    const mimeType = options.mimeType || this.getBestAudioFormat();
-    const timeslice = options.timeslice || chunkConfig.intervalMs;
-    
-    // Create MediaRecorder
-    this.mediaRecorder = new MediaRecorder(stream, {
-      mimeType: mimeType,
-      timeslice: timeslice
-    });
-    
-    this.timeslice = timeslice;
-    
-    // Setup event handlers
-    this.setupEventHandlers();
+    if (this.useWebAudioAPI && window.ProfessionalAudioRecorder) {
+      // Phase 3: Use Web Audio API with optimized configuration
+      this.recorder = new window.ProfessionalAudioRecorder(chunkConfig);
+      this.recorder.setOnDataAvailable((event) => {
+        if (this.onDataCallback && event.data.size > 0) {
+          this.onDataCallback(event.data);
+        }
+      });
+      console.log(`Using Professional Audio Recorder with optimized config: ${chunkConfig.chunkIntervalMs}ms chunks`);
+    } else {
+      // Fallback: Use MediaRecorder
+      const mimeType = options.mimeType || this.getBestAudioFormat();
+      const timeslice = options.timeslice || chunkConfig.chunkIntervalMs;
+      
+      this.mediaRecorder = new MediaRecorder(stream, {
+        mimeType: mimeType,
+        timeslice: timeslice
+      });
+      
+      this.timeslice = timeslice;
+      this.setupEventHandlers();
+      console.log('Using MediaRecorder fallback');
+    }
   }
   
   /**
@@ -275,10 +289,23 @@ class AudioRecorder {
   /**
    * Start recording
    */
-  start() {
+  async start() {
     if (!this.isRecording) {
-      this.mediaRecorder.start(this.timeslice);
-      this.isRecording = true;
+      try {
+        if (this.recorder) {
+          // Phase 2: Web Audio API recorder
+          await this.recorder.startRecording({ audio: true });
+        } else {
+          // Fallback: MediaRecorder
+          this.mediaRecorder.start(this.timeslice);
+        }
+        this.isRecording = true;
+      } catch (error) {
+        console.error('Failed to start recording:', error);
+        if (this.onErrorCallback) {
+          this.onErrorCallback(this.createUserFriendlyError(error));
+        }
+      }
     }
   }
   
@@ -287,8 +314,18 @@ class AudioRecorder {
    */
   stop() {
     if (this.isRecording) {
-      this.mediaRecorder.stop();
-      this.isRecording = false;
+      try {
+        if (this.recorder) {
+          // Phase 2: Web Audio API recorder
+          this.recorder.stopRecording();
+        } else {
+          // Fallback: MediaRecorder
+          this.mediaRecorder.stop();
+        }
+        this.isRecording = false;
+      } catch (error) {
+        console.error('Failed to stop recording:', error);
+      }
     }
   }
 }

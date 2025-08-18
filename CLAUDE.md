@@ -81,3 +81,5 @@ The project uses Test-Driven Development with comprehensive test coverage:
 - **Integration Tests**: Real Google Cloud API tests for performance validation
 
 When making changes, run the appropriate test suite first to understand current behavior, then implement changes while maintaining test coverage.
+
+Gebruik Context7 (mcp) om met de laatste documentatie te werken.

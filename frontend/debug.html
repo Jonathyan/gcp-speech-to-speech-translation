@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug - Live Speech Translation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            margin: 10px;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        #status {
+            margin: 20px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        #console {
+            background: #000;
+            color: #0f0;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            height: 300px;
+            overflow-y: auto;
+            margin-top: 20px;
+            border-radius: 5px;
+        }
+        
+        .log-entry {
+            margin: 2px 0;
+        }
+        
+        .error { color: #f00; }
+        .warn { color: #fa0; }
+        .info { color: #0af; }
+    </style>
+</head>
+<body>
+    <h1>Debug - Live Speech Translation</h1>
+    
+    <button id="start-broadcast">Start Uitzending</button>
+    <button id="join-listener">Luister mee</button>
+    <button id="test-microphone">Test Microfoon</button>
+    <button id="start-recording">Start Opname</button>
+    <button id="run-diagnostics">Diagnostiek</button>
+    <button id="disconnect" disabled>Verbinding Verbreken</button>
+    
+    <div id="status">Initializing...</div>
+    <div id="controls"></div>
+    
+    <h3>Console Output</h3>
+    <div id="console"></div>
+    
+    <script>
+        // Capture console logs
+        const consoleDiv = document.getElementById('console');
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+        
+        function addLogEntry(message, type = 'log') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            consoleDiv.appendChild(entry);
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            addLogEntry(args.join(' '), 'log');
+        };
+        
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            addLogEntry(args.join(' '), 'error');
+        };
+        
+        console.warn = function(...args) {
+            originalWarn.apply(console, args);
+            addLogEntry(args.join(' '), 'warn');
+        };
+        
+        console.info = function(...args) {
+            originalLog.apply(console, args);
+            addLogEntry(args.join(' '), 'info');
+        };
+        
+        // Log initial state
+        console.log('Debug page loaded');
+        console.log('Loading scripts...');
+    </script>
+    
+    <!-- Load the bundled JavaScript -->
+    <script src="dist/app.min.js"></script>
+    
+    <script>
+        // Check what's loaded
+        console.log('Scripts loaded');
+        console.log('AppConfig exists:', typeof window.AppConfig !== 'undefined');
+        console.log('AppUI exists:', typeof window.AppUI !== 'undefined');
+        console.log('AppConnection exists:', typeof window.AppConnection !== 'undefined');
+        console.log('AppAudio exists:', typeof window.AppAudio !== 'undefined');
+        
+        // Try to initialize manually
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded');
+            
+            // Check if functions exist
+            if (window.AppUI && window.AppUI.initializeUI) {
+                console.log('Calling initializeUI()');
+                try {
+                    window.AppUI.initializeUI();
+                    console.log('UI initialized successfully');
+                } catch (error) {
+                    console.error('Error initializing UI:', error);
+                }
+            } else {
+                console.error('AppUI.initializeUI not found');
+            }
+            
+            // Check button state
+            const buttons = ['start-broadcast', 'join-listener', 'test-microphone', 'start-recording', 'run-diagnostics', 'disconnect'];
+            buttons.forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) {
+                    console.log(`Button ${id}: disabled=${btn.disabled}, onclick=${btn.onclick ? 'set' : 'not set'}`);
+                } else {
+                    console.error(`Button ${id} not found`);
+                }
+            });
+            
+            // Update status
+            const statusDiv = document.getElementById('status');
+            if (statusDiv) {
+                statusDiv.textContent = 'Ready (Debug Mode)';
+            }
+        });
+        
+        // Add manual test functions
+        window.testMicrophoneManual = async function() {
+            console.log('Manual microphone test...');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                console.log('Microphone access granted:', stream);
+                stream.getTracks().forEach(track => track.stop());
+            } catch (error) {
+                console.error('Microphone access denied:', error);
+            }
+        };
+        
+        window.testWebSocketManual = function() {
+            console.log('Manual WebSocket test...');
+            const ws = new WebSocket('ws://localhost:8000/ws/speak/test');
+            ws.onopen = () => console.log('WebSocket connected');
+            ws.onerror = (e) => console.error('WebSocket error:', e);
+            ws.onclose = () => console.log('WebSocket closed');
+        };
+    </script>
+</body>
+</html>

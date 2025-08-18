@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local End-to-End Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        .warning { background: #fff3cd; color: #856404; }
+        button { margin: 5px; padding: 10px 20px; cursor: pointer; }
+        #audio-visualization { height: 100px; background: #f0f0f0; margin: 10px 0; position: relative; }
+        .audio-bar { position: absolute; bottom: 0; width: 4px; background: #007bff; }
+    </style>
+</head>
+<body>
+    <h1>Local End-to-End Test</h1>
+    
+    <div class="test-section">
+        <h2>System Status</h2>
+        <div id="system-status"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Quick Tests</h2>
+        <button onclick="testBackend()">Test Backend</button>
+        <button onclick="testWebSocket()">Test WebSocket</button>
+        <button onclick="testAudioPermission()">Test Audio Permission</button>
+        <button onclick="testFullPipeline()">Test Full Pipeline</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Live Test</h2>
+        <input type="text" id="stream-id" placeholder="Stream ID" value="test-stream">
+        <br><br>
+        <button onclick="startSpeaker()">Start as Speaker</button>
+        <button onclick="startListener()">Start as Listener</button>
+        <button onclick="stopConnection()" disabled id="stop-btn">Stop</button>
+        <div id="audio-visualization"></div>
+        <div id="connection-status"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test Results</h2>
+        <div id="results"></div>
+    </div>
+    
+    <script>
+        let mediaRecorder = null;
+        let audioContext = null;
+        let ws = null;
+        
+        function addResult(message, type = 'info') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            results.insertBefore(div, results.firstChild);
+        }
+        
+        function updateStatus(element, message, type) {
+            const el = document.getElementById(element);
+            el.className = `status ${type}`;
+            el.innerHTML = message;
+        }
+        
+        async function testBackend() {
+            addResult('Testing backend connection...', 'info');
+            try {
+                const response = await fetch('http://localhost:8000/health/full');
+                const data = await response.json();
+                if (data.status === 'ok') {
+                    addResult('✓ Backend is healthy: ' + JSON.stringify(data.services), 'success');
+                } else {
+                    addResult('✗ Backend issues: ' + JSON.stringify(data), 'warning');
+                }
+            } catch (error) {
+                addResult('✗ Backend not reachable: ' + error.message, 'error');
+            }
+        }
+        
+        async function testWebSocket() {
+            addResult('Testing WebSocket connection...', 'info');
+            const testWs = new WebSocket('ws://localhost:8000/ws/speak/test-ws');
+            
+            testWs.onopen = () => {
+                addResult('✓ WebSocket connected successfully', 'success');
+                testWs.close();
+            };
+            
+            testWs.onerror = (error) => {
+                addResult('✗ WebSocket error: ' + error, 'error');
+            };
+        }
+        
+        async function testAudioPermission() {
+            addResult('Testing audio permissions...', 'info');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                addResult('✓ Microphone access granted', 'success');
+                stream.getTracks().forEach(track => track.stop());
+            } catch (error) {
+                addResult('✗ Microphone access denied: ' + error.message, 'error');
+            }
+        }
+        
+        async function testFullPipeline() {
+            addResult('Starting full pipeline test...', 'info');
+            
+            // First test backend
+            await testBackend();
+            
+            const streamId = 'pipeline-test-' + Date.now();
+            let speaker = null;
+            let listener = null;
+            
+            try {
+                // Connect listener
+                listener = new WebSocket(`ws://localhost:8000/ws/listen/${streamId}`);
+                
+                await new Promise((resolve, reject) => {
+                    listener.onopen = () => {
+                        addResult('✓ Listener connected', 'success');
+                        resolve();
+                    };
+                    listener.onerror = reject;
+                    setTimeout(() => reject(new Error('Listener timeout')), 5000);
+                });
+                
+                // Connect speaker
+                speaker = new WebSocket(`ws://localhost:8000/ws/speak/${streamId}`);
+                
+                await new Promise((resolve, reject) => {
+                    speaker.onopen = () => {
+                        addResult('✓ Speaker connected', 'success');
+                        resolve();
+                    };
+                    speaker.onerror = reject;
+                    setTimeout(() => reject(new Error('Speaker timeout')), 5000);
+                });
+                
+                // Set up listener to receive
+                const receivePromise = new Promise((resolve) => {
+                    listener.onmessage = (event) => {
+                        if (event.data instanceof Blob) {
+                            addResult(`✓ Received audio: ${event.data.size} bytes`, 'success');
+                            resolve();
+                        }
+                    };
+                });
+                
+                // Send test audio
+                const testAudio = new Uint8Array(1000).fill(1);
+                speaker.send(testAudio.buffer);
+                addResult('✓ Sent test audio', 'info');
+                
+                // Wait for response
+                await Promise.race([
+                    receivePromise,
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('No response')), 10000))
+                ]);
+                
+                addResult('✓ Full pipeline test successful!', 'success');
+                
+            } catch (error) {
+                addResult('✗ Pipeline test failed: ' + error.message, 'error');
+            } finally {
+                if (speaker) speaker.close();
+                if (listener) listener.close();
+            }
+        }
+        
+        async function startSpeaker() {
+            const streamId = document.getElementById('stream-id').value;
+            addResult(`Starting speaker for stream: ${streamId}`, 'info');
+            
+            try {
+                // Get microphone access
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+                
+                // Connect WebSocket
+                ws = new WebSocket(`ws://localhost:8000/ws/speak/${streamId}`);
+                
+                ws.onopen = () => {
+                    updateStatus('connection-status', '✓ Connected as Speaker', 'success');
+                    document.getElementById('stop-btn').disabled = false;
+                    
+                    // Start recording
+                    mediaRecorder = new MediaRecorder(stream, {
+                        mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
+                    });
+                    
+                    mediaRecorder.ondataavailable = (event) => {
+                        if (event.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+                            ws.send(event.data);
+                            addResult(`Sent audio chunk: ${event.data.size} bytes`, 'info');
+                        }
+                    };
+                    
+                    mediaRecorder.start(250); // Send chunks every 250ms
+                    addResult('✓ Recording started', 'success');
+                };
+                
+                ws.onerror = (error) => {
+                    updateStatus('connection-status', '✗ Connection error', 'error');
+                    addResult('WebSocket error: ' + error, 'error');
+                };
+                
+            } catch (error) {
+                addResult('Failed to start speaker: ' + error.message, 'error');
+            }
+        }
+        
+        async function startListener() {
+            const streamId = document.getElementById('stream-id').value;
+            addResult(`Starting listener for stream: ${streamId}`, 'info');
+            
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            ws = new WebSocket(`ws://localhost:8000/ws/listen/${streamId}`);
+            
+            ws.onopen = () => {
+                updateStatus('connection-status', '✓ Connected as Listener', 'success');
+                document.getElementById('stop-btn').disabled = false;
+            };
+            
+            ws.onmessage = async (event) => {
+                if (event.data instanceof Blob) {
+                    addResult(`Received audio: ${event.data.size} bytes`, 'success');
+                    
+                    try {
+                        const arrayBuffer = await event.data.arrayBuffer();
+                        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                        
+                        const source = audioContext.createBufferSource();
+                        source.buffer = audioBuffer;
+                        source.connect(audioContext.destination);
+                        source.start();
+                        
+                        addResult('✓ Playing audio', 'success');
+                    } catch (error) {
+                        addResult('Failed to play audio: ' + error.message, 'error');
+                    }
+                }
+            };
+            
+            ws.onerror = (error) => {
+                updateStatus('connection-status', '✗ Connection error', 'error');
+                addResult('WebSocket error: ' + error, 'error');
+            };
+        }
+        
+        function stopConnection() {
+            if (mediaRecorder) {
+                mediaRecorder.stop();
+                mediaRecorder = null;
+            }
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+            updateStatus('connection-status', 'Disconnected', 'info');
+            document.getElementById('stop-btn').disabled = true;
+            addResult('Connection stopped', 'info');
+        }
+        
+        // Check system status on load
+        window.addEventListener('load', async () => {
+            updateStatus('system-status', 'Checking system...', 'info');
+            
+            try {
+                const response = await fetch('http://localhost:8000/health/full');
+                const data = await response.json();
+                
+                if (data.status === 'ok') {
+                    updateStatus('system-status', 
+                        `✓ System Ready - Backend: Running | STT: ${data.services.speech} | Translation: ${data.services.translation} | TTS: ${data.services.tts}`,
+                        'success'
+                    );
+                } else {
+                    updateStatus('system-status', 'System has issues: ' + JSON.stringify(data), 'warning');
+                }
+            } catch (error) {
+                updateStatus('system-status', '✗ Backend not accessible at http://localhost:8000', 'error');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -57,6 +57,12 @@
 <body>
     <h1>Live Speech Translation</h1>
     
+    <div style="margin: 20px 0;">
+        <label for="stream-id" style="font-weight: bold;">Stream ID:</label>
+        <input type="text" id="stream-id" placeholder="Enter stream ID (e.g., room-123)" value="demo-stream" style="padding: 8px; font-size: 16px; width: 250px; margin: 0 10px;">
+        <small style="display: block; margin-top: 5px; color: #666;">Use the same ID for both speaker and listener</small>
+    </div>
+    
     <button id="start-broadcast" disabled>Start Uitzending</button>
     <button id="join-listener" disabled>Luister mee</button>
     <button id="test-microphone">Test Microfoon</button>
@@ -70,6 +76,7 @@
     <script src="../src/config.js"></script>
     <script src="../src/utils.js"></script>
     <script src="../src/diagnostics.js"></script>
+    <script src="../src/wavEncoder.js"></script>
     <script src="../src/audio.js"></script>
     <script src="../src/connection.js"></script>
     <script src="../src/ui.js"></script>

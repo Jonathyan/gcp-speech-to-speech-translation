@@ -23,6 +23,11 @@ python_functions = ["test_*"]
  google-cloud-speech = "^2.21.0"
  google-cloud-translate = "^3.21.1"
  google-cloud-texttospeech = "^2.27.0"
+ pydub = "^0.25.1"
+ psutil = "^7.0.0"
+ google-cloud-logging = "^3.10.0"
+ google-cloud-monitoring = "^2.21.0"
+ prometheus-client = "^0.19.0"
 
  [tool.poetry.group.dev.dependencies]
  pytest = "^8.0.0"

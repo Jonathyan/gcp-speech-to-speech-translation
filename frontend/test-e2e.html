@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>End-to-End Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .status { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        button { margin: 5px; padding: 10px 20px; }
+    </style>
+</head>
+<body>
+    <h1>End-to-End Connection Test</h1>
+    
+    <div id="status"></div>
+    
+    <h2>Test Steps</h2>
+    <button onclick="testBackendHealth()">1. Test Backend Health</button>
+    <button onclick="testWebSocketSpeak()">2. Test Speaker WebSocket</button>
+    <button onclick="testWebSocketListen()">3. Test Listener WebSocket</button>
+    <button onclick="testFullConnection()">4. Test Full E2E</button>
+    
+    <div id="results"></div>
+    
+    <script>
+        function addResult(message, type = 'info') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            results.appendChild(div);
+            results.scrollTop = results.scrollHeight;
+        }
+        
+        async function testBackendHealth() {
+            addResult('Testing backend health...', 'info');
+            try {
+                const response = await fetch('http://localhost:8000/health');
+                if (response.ok) {
+                    const data = await response.text();
+                    addResult(`✓ Backend health OK: ${data}`, 'success');
+                    return true;
+                } else {
+                    addResult(`✗ Backend health failed: ${response.status}`, 'error');
+                    return false;
+                }
+            } catch (error) {
+                addResult(`✗ Backend not reachable: ${error.message}`, 'error');
+                return false;
+            }
+        }
+        
+        function testWebSocketSpeak() {
+            addResult('Testing speaker WebSocket...', 'info');
+            const streamId = `test-${Date.now()}`;
+            const ws = new WebSocket(`ws://localhost:8000/ws/speak/${streamId}`);
+            
+            ws.onopen = function() {
+                addResult(`✓ Speaker WebSocket connected (${streamId})`, 'success');
+                ws.close();
+            };
+            
+            ws.onerror = function(error) {
+                addResult(`✗ Speaker WebSocket error: ${error}`, 'error');
+            };
+            
+            ws.onclose = function(event) {
+                if (event.wasClean) {
+                    addResult(`✓ Speaker WebSocket closed cleanly`, 'success');
+                } else {
+                    addResult(`✗ Speaker WebSocket closed unexpectedly: ${event.code}`, 'error');
+                }
+            };
+        }
+        
+        function testWebSocketListen() {
+            addResult('Testing listener WebSocket...', 'info');
+            const streamId = `test-${Date.now()}`;
+            const ws = new WebSocket(`ws://localhost:8000/ws/listen/${streamId}`);
+            
+            ws.onopen = function() {
+                addResult(`✓ Listener WebSocket connected (${streamId})`, 'success');
+                ws.close();
+            };
+            
+            ws.onerror = function(error) {
+                addResult(`✗ Listener WebSocket error: ${error}`, 'error');
+            };
+            
+            ws.onclose = function(event) {
+                if (event.wasClean) {
+                    addResult(`✓ Listener WebSocket closed cleanly`, 'success');
+                } else {
+                    addResult(`✗ Listener WebSocket closed unexpectedly: ${event.code}`, 'error');
+                }
+            };
+        }
+        
+        async function testFullConnection() {
+            addResult('Starting full end-to-end test...', 'info');
+            
+            // Test backend first
+            if (!(await testBackendHealth())) {
+                addResult('✗ Full test aborted - backend not healthy', 'error');
+                return;
+            }
+            
+            const streamId = `e2e-test-${Date.now()}`;
+            let speakerWs, listenerWs;
+            let testPassed = false;
+            
+            try {
+                // Connect listener first
+                addResult(`Connecting listener to stream ${streamId}...`, 'info');
+                listenerWs = new WebSocket(`ws://localhost:8000/ws/listen/${streamId}`);
+                
+                listenerWs.onopen = function() {
+                    addResult('✓ Listener connected', 'success');
+                    
+                    // Now connect speaker
+                    addResult('Connecting speaker...', 'info');
+                    speakerWs = new WebSocket(`ws://localhost:8000/ws/speak/${streamId}`);
+                    
+                    speakerWs.onopen = function() {
+                        addResult('✓ Speaker connected', 'success');
+                        
+                        // Send test message
+                        setTimeout(() => {
+                            const testMessage = 'Hello, this is a test message';
+                            speakerWs.send(testMessage);
+                            addResult(`Sent test message: "${testMessage}"`, 'info');
+                        }, 500);
+                    };
+                    
+                    speakerWs.onerror = function(error) {
+                        addResult(`✗ Speaker error: ${error}`, 'error');
+                    };
+                };
+                
+                listenerWs.onmessage = function(event) {
+                    addResult(`✓ Listener received: ${event.data}`, 'success');
+                    testPassed = true;
+                    
+                    // Clean up
+                    setTimeout(() => {
+                        if (speakerWs) speakerWs.close();
+                        if (listenerWs) listenerWs.close();
+                        addResult('✓ Full end-to-end test completed successfully!', 'success');
+                    }, 1000);
+                };
+                
+                listenerWs.onerror = function(error) {
+                    addResult(`✗ Listener error: ${error}`, 'error');
+                };
+                
+                // Timeout for test
+                setTimeout(() => {
+                    if (!testPassed) {
+                        addResult('✗ Full test timeout - no message received', 'error');
+                        if (speakerWs) speakerWs.close();
+                        if (listenerWs) listenerWs.close();
+                    }
+                }, 5000);
+                
+            } catch (error) {
+                addResult(`✗ Full test error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Auto-test on load
+        window.addEventListener('load', () => {
+            addResult('Page loaded - ready to test', 'info');
+        });
+    </script>
+</body>
+</html>
