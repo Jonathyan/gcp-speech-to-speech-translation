@@ -127,8 +127,22 @@ async def websocket_listener(websocket: WebSocket, stream_id: str):
             message = await websocket.receive()
             if message["type"] == "websocket.disconnect":
                 break
+            elif message["type"] == "websocket.text":
+                # Handle text messages (including keepalive)
+                try:
+                    import json
+                    data = json.loads(message.get("text", "{}"))
+                    if data.get("type") == "keepalive" and data.get("action") == "pong":
+                        await connection_manager.handle_pong(websocket)
+                        logger.debug(f"Handled keepalive pong from {client_id}")
+                except json.JSONDecodeError:
+                    # Ignore malformed JSON
+                    pass
+            # Ignore other message types for listeners
     except WebSocketDisconnect:
         logger.info(f"🔌 Listener left: {client_id}")
+    except Exception as e:
+        logger.error(f"❌ Listener error: {e}")
     finally:
         connection_manager.remove_listener(stream_id, websocket)
 
@@ -142,3 +156,8 @@ async def health():
         "tts": "connected" if tts_client else "disconnected",
         "active_streams": connection_manager.get_active_streams_count()
     }
+
+@app.get("/keepalive/stats")
+async def keepalive_stats():
+    """Get WebSocket keepalive statistics for monitoring."""
+    return connection_manager.get_keepalive_stats()
