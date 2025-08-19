@@ -73,13 +73,14 @@ class SimpleStreamingSpeechToText:
     def _stream_worker(self):
         """Background thread worker - handles Google Cloud Speech streaming."""
         try:
-            # Create streaming config - use LINEAR16 for raw audio data
+            # Create streaming config - optimized for continuous speech
             config = speech.RecognitionConfig(
                 encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
                 sample_rate_hertz=16000,
                 language_code='nl-NL',
                 enable_automatic_punctuation=True,
-                model="latest_short",
+                model="latest_long",  # Better for continuous speech
+                use_enhanced=True,    # Better accuracy (slight cost increase)
                 audio_channel_count=1,
             )
             
