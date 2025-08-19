@@ -4,7 +4,7 @@
 
 ## ✨ Features
 
-- **Real-time Audio Streaming** - 250ms chunks via WebSocket
+- **Real-time Audio Streaming** - 100ms chunks via WebSocket
 - **Production Audio Playback** - Web Audio API with queue management and memory optimization
 - **Advanced Error Recovery** - Circuit breaker patterns with automatic recovery mode
 - **User Experience Excellence** - Dutch error messages, progress indicators, quality monitoring
@@ -73,7 +73,7 @@ frontend/
 ### Audio Settings (Production)
 ```javascript
 AUDIO: {
-  CHUNK_INTERVAL_MS: 250,        // Real-time streaming
+  CHUNK_INTERVAL_MS: 100,        // Real-time streaming
   MAX_CHUNK_SIZE: 100 * 1024,    // 100KB limit
   AUDIO_CONSTRAINTS: {
     audio: {
@@ -218,25 +218,25 @@ Click "Diagnostiek" button for:
 
 ## 🏗️ Architecture
 
-### Modular Design
-- **config.js** - Production audio configuration & format detection
-- **audio.js** - MediaRecorder integration with error recovery
-- **audioPlayer.js** - Web Audio API with circuit breaker patterns and memory optimization
-- **connection.js** - WebSocket streaming with AudioPlayer integration
-- **ui.js** - User experience with comprehensive error handling and diagnostics
-- **utils.js** - Browser compatibility & utility functions
+### Clean Architecture Design
+- **config.js** - Production audio configuration (100ms chunks, LINEAR16 PCM)
+- **wavEncoder.js** - Raw LINEAR16 PCM generation via Web Audio API
+- **audio.js** - MediaRecorder integration with real-time processing
+- **audioPlayer.js** - Web Audio API with queue management and error recovery
+- **connection.js** - WebSocket streaming with `/ws/stream/{id}` endpoints
+- **ui.js** - Dutch interface with comprehensive diagnostics
 
-### Key Technologies
-- **Web Audio API** - Advanced audio playback with AudioContext management
-- **MediaRecorder API** - Audio capture and processing
-- **WebSocket** - Real-time binary data streaming
-- **getUserMedia** - Microphone access with constraints
-- **Performance API** - Memory monitoring and metrics collection
-- **Circuit Breaker Pattern** - Resilient error recovery architecture
+### Core Technologies
+- **Web Audio API** - Raw LINEAR16 PCM audio generation and playback
+- **MediaRecorder API** - Real-time audio capture (100ms chunks)
+- **WebSocket Streaming** - Binary data streaming to Google Cloud Speech
+- **getUserMedia** - Microphone access with production constraints
+- **Circuit Breaker Pattern** - Automatic error recovery and retry logic
+- **Performance Monitoring** - Real-time quality assessment and diagnostics
 
 ## 📈 Production Ready
 
-✅ **Audio Streaming Pipeline** - Real-time 250ms chunks with WebSocket streaming  
+✅ **Audio Streaming Pipeline** - Real-time 100ms chunks with WebSocket streaming  
 ✅ **Audio Playback System** - Web Audio API with queue management and memory optimization  
 ✅ **Circuit Breaker Resilience** - Automatic recovery mode with exponential backoff  
 ✅ **User Experience Excellence** - Dutch error messages with actionable suggestions  

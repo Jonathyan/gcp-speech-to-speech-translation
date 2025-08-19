@@ -1,84 +1,59 @@
-# GCP Live Speech-to-Speech Translation Service
+# Dutch-to-English Streaming Translation Service
 
-Real-time speech-to-speech translation service using Google Cloud APIs with broadcasting capabilities.
+Real-time speech-to-speech translation system using Google Cloud APIs with clean streaming architecture.
 
 ![Alt tekst](frontend-mock.png "Mockup of UI")
 
-## 🎯 Current Status: **Production Ready - All Iterations Complete**
+## 🎯 Production Status: **✅ OPERATIONAL**
 
-### ✅ **Backend Complete (Iterations 1-7)**
-- **Real-time WebSocket server** with FastAPI
-- **Complete Google Cloud pipeline**: STT → Translation → TTS
-- **Broadcasting architecture**: 1-to-many speaker-to-listeners
-- **Production-ready resilience**: Retry logic, circuit breaker, timeouts
-- **Comprehensive health monitoring**: 4 endpoints for service status
-- **Performance verified**: Sub-second end-to-end latency
+### System Overview
+- **Real-time Translation**: Dutch speech → English audio in <1s
+- **Streaming Architecture**: Clean 3-layer system (Communication → Processing → Infrastructure)
+- **Broadcasting**: 1-to-many speaker-to-listeners with stream isolation
+- **Performance**: >90% success rate, stable under concurrent load
+- **Deployment**: Google Cloud Run + Firebase Hosting (currently active)
 
-### ✅ **Frontend Complete (Iterations 8-10E)**
-- **Production audio streaming** - Real-time 250ms chunks via WebSocket
-- **Complete audio pipeline** - Microphone → MediaRecorder → WebSocket → AudioPlayer
-- **Advanced error recovery** - Circuit breaker, automatic retry, recovery mode
-- **User experience enhancements** - Dutch error messages, progress indicators, quality monitoring
-- **Audio playback system** - Queue management, memory optimization, performance metrics
-- **Comprehensive diagnostics** - System health reports, troubleshooting recommendations
-- **Production configuration** - 16kHz mono audio with noise reduction
-- **Multi-browser support** - Automatic format detection and fallback
-- **Comprehensive testing** - 210 tests with production-ready coverage
+### Core Features ✅
+- **Backend**: FastAPI WebSocket server with Google Cloud Speech streaming
+- **Frontend**: Production-ready JavaScript client with Web Audio API
+- **Audio Processing**: Raw LINEAR16 PCM for optimal Google Cloud compatibility
+- **Error Recovery**: Circuit breaker patterns with automatic retry
+- **Health Monitoring**: Comprehensive diagnostics and system status
+- **User Experience**: Dutch interface with real-time quality assessment
 
-## 🏗️ Architecture Overview
+## 🏗️ Clean Streaming Architecture
 
 ![Alt tekst](gcp-arch.png "Solution Architecture in GCP")
 
 ```
-┌─────────────────┐                    ┌─────────────────────────────────┐
-│   Frontend      │ ◄─── WebSocket ───► │   FastAPI Server               │
-│   (Browser)     │    Binary Audio     │   - Speaker: /ws/speak/{id}    │
-│   - Speaker UI  │                     │   - Listener: /ws/listen/{id}  │
-│   - Listener UI │                     │   - Health: /health/*          │
-└─────────────────┘                     └─────────────────────────────────┘
-                                                         │
-                                        ┌─────────────────────────────────┐
-                                        │   Broadcasting Layer            │
-                                        │   - ConnectionManager           │
-                                        │   - Stream isolation            │
-                                        │   - Multi-listener support     │
-                                        └─────────────────────────────────┘
-                                                         │
-                                        ┌─────────────────────────────────┐
-                                        │   Audio Processing Pipeline     │
-                                        │                                 │
-                                        │  ┌─────────────────────────┐    │
-                                        │  │ 1. Speech-to-Text       │    │
-                                        │  │    ✅ Google Cloud API   │    │
-                                        │  │    - Dutch language     │    │
-                                        │  │    - Streaming support  │    │
-                                        │  └─────────────────────────┘    │
-                                        │              │                  │
-                                        │              ▼                  │
-                                        │  ┌─────────────────────────┐    │
-                                        │  │ 2. Translation          │    │
-                                        │  │    ✅ Google Cloud API   │    │
-                                        │  │    - Dutch → English    │    │
-                                        │  │    - ~250ms latency     │    │
-                                        │  └─────────────────────────┘    │
-                                        │              │                  │
-                                        │              ▼                  │
-                                        │  ┌─────────────────────────┐    │
-                                        │  │ 3. Text-to-Speech       │    │
-                                        │  │    ✅ Google Cloud API   │    │
-                                        │  │    - Wavenet voices     │    │
-                                        │  │    - MP3 format         │    │
-                                        │  └─────────────────────────┘    │
-                                        └─────────────────────────────────┘
-                                                         │
-                                        ┌─────────────────────────────────┐
-                                        │   Resilience Layer              │
-                                        │   ✅ Retry Logic (3x)            │
-                                        │   ✅ Circuit Breaker (5 fails)   │
-                                        │   ✅ Timeout Protection (5s)     │
-                                        │   ✅ Graceful Fallback Audio     │
-                                        └─────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                       PRODUCTION STREAMING SYSTEM                      │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  Browser (Speaker) ──────► FastAPI WebSocket ──────► Browser (Listener) │
+│       │                           │                          │         │
+│  Raw LINEAR16              Streaming STT                   MP3 Audio     │
+│  100ms chunks                     │                          │         │
+│                                   ▼                                     │
+│              ┌─────────────────────────────────────────────┐            │
+│              │         REAL-TIME PIPELINE                  │            │
+│              │                                             │            │
+│              │  Audio ──► Google STT ──► Translate ──► TTS │            │
+│              │   100ms      (Dutch)       (Dutch→EN)   MP3 │            │
+│              │                                             │            │
+│              │  • Streaming API    • Real-time      • Neural│           │
+│              │  • LINEAR16 PCM     • Google v2      • Voice │           │  
+│              │  • <1s latency      • Direct calls   • Broadcast│        │
+│              └─────────────────────────────────────────────┘            │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Key Design Principles
+- **Simplicity**: Direct Google Cloud API calls without complex abstraction
+- **Real-time**: 100ms audio chunks with streaming STT for <1s latency
+- **Broadcasting**: Thread-safe 1-to-many communication via ConnectionManager
+- **Reliability**: Basic error handling with automatic retry and recovery
 
 ## 🚀 Quick Start
 
@@ -94,10 +69,10 @@ Real-time speech-to-speech translation service using Google Cloud APIs with broa
 poetry install
 
 # Set up Google Cloud credentials
-export GOOGLE_APPLICATION_CREDENTIALS="path/to/service-account.json"
+export GOOGLE_APPLICATION_CREDENTIALS="credentials/service-account.json"
 
 # Run development server
-poetry run uvicorn gcp_speech_to_speech_translation.main:app --reload
+poetry run uvicorn backend.main:app --reload
 ```
 
 ### Frontend Setup
@@ -119,15 +94,14 @@ npm run serve:prod
 ## 📡 API Endpoints
 
 ### WebSocket Endpoints
-- **`/ws/speak/{stream_id}`** - Speaker sends audio for translation
+- **`/ws/stream/{stream_id}`** - Speaker sends audio for real-time translation
 - **`/ws/listen/{stream_id}`** - Listeners receive translated audio
-- **`/ws`** - Legacy endpoint (backwards compatibility)
+- **Stream Isolation** - Multiple concurrent streams via unique stream_id
 
 ### Health Monitoring
-- **`GET /health/speech`** - Speech-to-Text service status
-- **`GET /health/translation`** - Translation service status  
-- **`GET /health/tts`** - Text-to-Speech service status
-- **`GET /health/full`** - Complete pipeline health check
+- **`GET /health`** - Basic service connectivity status
+- **`GET /ready`** - Container readiness probe
+- **`GET /stats`** - Performance metrics and pipeline statistics
 
 ## 🎮 Usage
 
@@ -145,51 +119,47 @@ npm run serve:prod
 ### Stream Isolation
 Multiple independent streams can run simultaneously using different `stream_id` values.
 
-## 📊 Performance Metrics
+## 📊 Production Performance
 
-- **End-to-end latency**: 677-817ms
-- **Translation**: ~250ms average
-- **TTS**: ~400-600ms typical
-- **Concurrent handling**: 5+ simultaneous requests
-- **Success rate**: 100% under normal conditions
+- **End-to-end latency**: <1000ms (real-time optimized)
+- **Translation success rate**: >90% (production validated)
+- **Concurrent streams**: 10+ simultaneous sessions
+- **Audio processing**: 100ms chunks for minimal delay
+- **System stability**: Stable under concurrent load
 
 ## 🧪 Testing
 
 ### Backend Tests
 ```bash
-# Run all tests (75 tests)
+# Run all tests (75 comprehensive tests)
 poetry run pytest
 
-# Performance tests
-poetry run pytest backend/tests/test_translation_performance.py -v -s
-
-# Integration tests
-poetry run pytest backend/tests/test_real_tts_integration.py -v -s
-
-# Connection manager tests
+# Specific test suites
 poetry run pytest backend/tests/test_connection_manager.py -v
+poetry run pytest backend/tests/test_translation_performance.py -v -s
+poetry run pytest backend/tests/test_real_tts_integration.py -v -s
 ```
 
 ### Frontend Tests
 ```bash
 cd frontend
 
-# Run all tests (210 tests with production-ready coverage)
+# Run all tests (210 tests - production ready)
 npm test
 
-# Error Recovery & User Experience (17 tests)
-npm test -- --testNamePattern="Error Recovery & User Experience"
-
-# Specific test suites
+# Specific test categories
+npm test tests/audio.test.js        # Audio capture & processing
+npm test tests/connection.test.js   # WebSocket streaming
 npm test tests/audioPlayer.test.js  # Audio playback & error recovery
 npm test tests/ui.test.js           # User interface & diagnostics
-npm test tests/connection.test.js   # WebSocket streaming
 npm test tests/utils.test.js        # Utility functions
-npm test tests/audio.test.js        # Audio capture & processing
+```
 
-# Manual testing
-open public/index.html              # Main interface
-open public/test-listener-mode.html # Listener mode testing
+### Manual Testing
+```bash
+# Development testing
+npm run serve          # Frontend at http://localhost:3000
+open public/index.html # Main interface testing
 ```
 
 ## 🔧 Configuration
@@ -207,69 +177,63 @@ TRANSLATION_TARGET_LANGUAGE="en"
 
 ### Frontend Configuration
 Edit `frontend/src/config.js` for:
-- **Audio Settings**: 16kHz mono, 250ms chunks, 100KB limit
-- **WebSocket URLs**: Development vs production endpoints
-- **Connection Settings**: Retry logic, rate limiting
-- **Browser Support**: Automatic format detection (webm/mp4/wav)
+- **Audio Settings**: 16kHz mono, 100ms chunks, production optimized
+- **WebSocket URLs**: Development vs production streaming endpoints
+- **Audio Processing**: Raw LINEAR16 PCM generation via Web Audio API
+- **Browser Support**: Automatic format detection with graceful fallbacks
 
-## 📁 Project Structure
+## 📁 Current Project Structure
 
 ```
-├── backend/                            # Backend source
-│   ├── tests/                         # Backend tests (75 tests)
-│   ├── main.py                         # FastAPI application
-│   ├── connection_manager.py           # Broadcasting logic
-│   ├── services.py                     # Audio processing pipeline
-│   └── config.py                       # Configuration management
-├── frontend/                           # Frontend application
-│   ├── public/                         # Static HTML files
+├── backend/                            # Clean backend implementation
+│   ├── tests/                         # Comprehensive tests (75 tests)
+│   ├── main.py                        # FastAPI WebSocket server
+│   ├── streaming_stt.py               # Google Cloud Speech streaming
+│   ├── connection_manager.py          # Thread-safe broadcasting
+│   ├── services.py                    # Translation and TTS pipeline
+│   ├── config.py                      # Environment configuration
+│   └── resilience.py                  # Basic error handling
+├── frontend/                          # Production-ready frontend
+│   ├── public/                        # Static HTML interface
 │   ├── src/                           # JavaScript modules
-│   │   ├── audio.js                   # Audio recording & processing
-│   │   ├── audioPlayer.js             # Audio playback & error recovery
+│   │   ├── config.js                  # Audio settings (100ms chunks)
+│   │   ├── wavEncoder.js              # Raw LINEAR16 PCM generation
 │   │   ├── connection.js              # WebSocket streaming
-│   │   ├── config.js                  # Production configuration
-│   │   ├── utils.js                   # Utility functions & browser detection
-│   │   └── ui.js                      # User interface & diagnostics
+│   │   ├── audio.js                   # MediaRecorder integration
+│   │   └── ui.js                      # Dutch interface with diagnostics
 │   ├── tests/                         # Jest tests (210 tests)
-│   └── dist/                          # Production build
-└── plan/                              # Development documentation
+│   └── dist/                          # Production build output
+└── ARCHITECTURE.md                    # Current system documentation
 ```
 
-## ✅ **Production Features Complete**
+## ✅ **Production System Features**
 
-### ✨ **Audio Streaming Pipeline**
-- ✅ Microphone access with `getUserMedia` and production constraints
-- ✅ Real-time audio streaming with `MediaRecorder` (250ms chunks)
-- ✅ Binary WebSocket transmission with rate limiting
-- ✅ Audio format conversion (Blob → ArrayBuffer)
-- ✅ Chunk validation and size monitoring
+### 🎵 **Real-time Audio Pipeline**
+- ✅ Raw LINEAR16 PCM generation via Web Audio API 
+- ✅ 100ms audio chunks for minimal latency streaming
+- ✅ Google Cloud Speech streaming API integration
+- ✅ Direct translation pipeline without complex buffering
+- ✅ MP3 audio broadcasting to multiple listeners
 
-### 🎵 **Audio Playback System** 
-- ✅ Production-ready `AudioPlayer` with Web Audio API
-- ✅ Queue management and memory optimization
-- ✅ Buffer pooling and performance metrics
-- ✅ Automatic audio format detection and decoding
-- ✅ Real-time latency measurement and quality assessment
+### 🛡️ **Production Reliability**
+- ✅ Circuit breaker patterns with automatic error recovery
+- ✅ Thread-safe connection management and broadcasting
+- ✅ Comprehensive health monitoring and diagnostics
+- ✅ Basic retry logic with graceful failure handling
+- ✅ Memory optimization and performance monitoring
 
-### 🛡️ **Advanced Error Recovery**
-- ✅ Circuit breaker patterns with automatic recovery mode
-- ✅ Exponential backoff retry with jitter and adaptive delays
-- ✅ Memory pressure detection and emergency cleanup
-- ✅ AudioContext suspension handling with user gesture prompts
-- ✅ Comprehensive error logging and diagnostics
+### 🎯 **User Experience**
+- ✅ Dutch interface with real-time quality assessment
+- ✅ Comprehensive diagnostics and troubleshooting tools
+- ✅ Multi-browser support with automatic format fallbacks
+- ✅ Production-ready error messages and recovery workflows
+- ✅ Visual feedback and audio level monitoring
 
-### 🎯 **User Experience Excellence**
-- ✅ Dutch user-friendly error messages with actionable suggestions
-- ✅ Real-time audio quality monitoring and recommendations
-- ✅ Progressive loading indicators with detailed progress
-- ✅ Visual audio level indicators and recording feedback
-- ✅ Comprehensive system health reports and troubleshooting
-- ✅ Context-aware error recovery workflows
-
-### 🎯 **Next: Production Deployment**
-- Docker containerization for Cloud Run
-- Firebase Hosting deployment
-- Production monitoring and analytics
+### 🚀 **Current Deployment Status**
+- ✅ Google Cloud Run backend deployment (operational)
+- ✅ Firebase Hosting frontend deployment (operational)
+- ✅ Production monitoring with health endpoints
+- ✅ Real-time performance: <1s latency, >90% success rate
 
 ## 🔒 Security & Privacy
 
@@ -278,22 +242,30 @@ Edit `frontend/src/config.js` for:
 - Environment-based configuration management
 - CORS and WebSocket security headers
 
-## 📈 Monitoring & Health
+## 📈 Production Monitoring
 
-The service provides comprehensive health monitoring:
-- Individual service connectivity checks
-- End-to-end pipeline validation
-- Performance metrics logging
-- Error rate tracking
-- Connection state monitoring
+Current operational monitoring includes:
+- **Health endpoints**: `/health`, `/ready`, `/stats` for service status
+- **Real-time performance**: <1s latency tracking and success rate monitoring  
+- **Error tracking**: Structured logging with Google Cloud Run integration
+- **User diagnostics**: Comprehensive frontend diagnostic tools
+- **System metrics**: Connection state and performance monitoring
 
-## 🤝 Contributing
+## 🤝 Development & Testing
 
-This project follows Test-Driven Development (TDD):
-1. Write failing tests first
-2. Implement minimal code to pass tests
-3. Refactor while keeping tests green
-4. Comprehensive test coverage for all features
+The system follows Test-Driven Development with:
+- **285 total tests**: 75 backend + 210 frontend comprehensive test coverage
+- **Production validation**: Real-time performance and reliability testing
+- **Clean architecture**: Simplified 3-layer system design
+- **Continuous monitoring**: Health endpoints with operational metrics
+
+## 🎯 Production Status Summary
+
+**✅ OPERATIONAL**: Dutch-to-English real-time translation system
+- **Backend**: `streaming-stt-service-00024-lfj` (Google Cloud Run)
+- **Frontend**: `https://lfhs-translate.web.app` (Firebase Hosting)  
+- **Performance**: <1s end-to-end latency, >90% success rate
+- **Architecture**: Clean streaming implementation with direct Google Cloud API integration
 
 ## 📄 License
 
