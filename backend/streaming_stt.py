@@ -58,6 +58,7 @@ class SimpleStreamingSpeechToText:
     def send_audio_chunk(self, audio_chunk: bytes):
         """Send audio chunk - non-blocking."""
         if not self.is_streaming:
+            self._logger.warning("🚫 Received audio chunk but streaming is not active")
             return
             
         # Check if stream restart is needed (but not if already in progress)
@@ -69,9 +70,31 @@ class SimpleStreamingSpeechToText:
             
         try:
             self._audio_queue.put(audio_chunk, block=False)
-            self._logger.debug(f"📥 Audio chunk queued: {len(audio_chunk)} bytes")
+            # Enhanced logging for debugging
+            queue_size = self._audio_queue.qsize()
+            self._logger.info(f"📥 Audio chunk queued: {len(audio_chunk)} bytes (queue size: {queue_size})")
+            
+            # Log chunk timing to help debug Google Cloud Speech timeouts
+            import time
+            current_time = time.time()
+            if hasattr(self, '_last_chunk_time'):
+                chunk_gap = (current_time - self._last_chunk_time) * 1000  # ms
+                if chunk_gap > 500:  # Log gaps longer than 500ms
+                    self._logger.warning(f"⏰ Large gap between chunks: {chunk_gap:.1f}ms")
+            self._last_chunk_time = current_time
+            
         except queue.Full:
-            self._logger.warning("Audio queue full, dropping chunk")
+            self._logger.error("❌ Audio queue full, dropping chunk - this will cause Speech API timeout!")
+            # Try to clear some older chunks if queue is full
+            try:
+                for _ in range(3):  # Remove up to 3 old chunks
+                    if not self._audio_queue.empty():
+                        self._audio_queue.get(block=False)
+                # Try to add the new chunk after clearing space
+                self._audio_queue.put(audio_chunk, block=False)
+                self._logger.info("✅ Recovered from queue full by clearing old chunks")
+            except:
+                self._logger.error("❌ Failed to recover from full queue")
 
     async def stop_streaming(self):
         """Stop streaming."""

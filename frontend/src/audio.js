@@ -353,25 +353,49 @@ class AudioRecorder {
  */
 function convertAudioChunk(blob) {
   return new Promise((resolve, reject) => {
+    const startTime = performance.now();
+    
     if (!blob || blob.size === 0) {
+      console.error('🚫 Audio conversion failed: Empty blob', {
+        hasBlob: !!blob,
+        size: blob ? blob.size : 'N/A'
+      });
       reject(new Error('Audio data is empty'));
       return;
     }
     
+    console.log('🔄 Converting audio blob to ArrayBuffer:', {
+      size: blob.size,
+      type: blob.type,
+      startTime: startTime.toFixed(2)
+    });
+    
     const reader = new FileReader();
     
     reader.onload = () => {
+      const endTime = performance.now();
+      const duration = (endTime - startTime).toFixed(2);
+      console.log('✅ Audio conversion completed:', {
+        inputSize: blob.size,
+        outputSize: reader.result.byteLength,
+        duration: duration + 'ms',
+        format: 'ArrayBuffer'
+      });
       resolve(reader.result);
     };
     
     reader.onerror = () => {
+      const endTime = performance.now();
+      const duration = (endTime - startTime).toFixed(2);
+      console.error('❌ Audio conversion failed after', duration + 'ms');
       reject(new Error('Failed to convert audio chunk'));
     };
     
     try {
       reader.readAsArrayBuffer(blob);
     } catch (error) {
-      reject(new Error('Failed to convert audio chunk'));
+      console.error('❌ Audio conversion exception:', error);
+      reject(new Error('Failed to convert audio chunk: ' + error.message));
     }
   });
 }
@@ -383,15 +407,20 @@ function convertAudioChunk(blob) {
  */
 function validateAudioChunk(arrayBuffer) {
   if (!arrayBuffer || !(arrayBuffer instanceof ArrayBuffer)) {
+    console.error('🚫 Audio validation failed: Invalid ArrayBuffer', {
+      isArrayBuffer: arrayBuffer instanceof ArrayBuffer,
+      type: typeof arrayBuffer,
+      hasData: !!arrayBuffer
+    });
     return {
       isValid: false,
       size: 0,
-      error: 'Invalid audio data'
+      error: 'Invalid audio data - not ArrayBuffer'
     };
   }
   
   const size = arrayBuffer.byteLength;
-  const minSize = 100; // 100 bytes minimum
+  const minSize = 50; // Reduced minimum for frequent chunks
   
   // Get max size from config
   const chunkConfig = window.AppConfig ? 
@@ -399,26 +428,48 @@ function validateAudioChunk(arrayBuffer) {
     { maxSize: 100 * 1024 };
   const maxSize = chunkConfig.maxSize;
   
+  // Enhanced validation logging
+  console.log('🔍 Validating audio chunk:', {
+    size: size,
+    minSize: minSize,
+    maxSize: maxSize,
+    sampleRate: '16kHz expected',
+    format: 'LINEAR16 expected'
+  });
+  
   if (size < minSize) {
+    console.warn('⚠️ Audio chunk too small:', size, 'bytes <', minSize, 'minimum');
     return {
       isValid: false,
       size: size,
-      error: `Audio chunk too small (${size} bytes)`
+      error: `Chunk too small: ${size} bytes < ${minSize} minimum`
     };
   }
   
   if (size > maxSize) {
+    console.warn('⚠️ Audio chunk too large:', size, 'bytes >', maxSize, 'maximum');
     return {
       isValid: false,
       size: size,
-      error: `Audio chunk too large (${size} bytes)`
+      error: `Chunk too large: ${size} bytes > ${maxSize} maximum`
     };
   }
+  
+  // Log successful validation with timing info
+  const timestamp = performance.now();
+  console.log('✅ Audio chunk validation passed:', {
+    size: size,
+    sizeKB: (size / 1024).toFixed(2),
+    timestamp: timestamp.toFixed(2),
+    format: 'ready for Google Cloud Speech'
+  });
   
   return {
     isValid: true,
     size: size,
-    error: null
+    error: null,
+    format: 'validated',
+    timestamp: timestamp
   };
 }
 

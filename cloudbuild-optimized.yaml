@@ -1,0 +1,92 @@
+# Optimized Cloud Build Configuration with Layer Caching
+steps:
+  # Enable Docker layer caching and build optimized image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '--cache-from', 'gcr.io/$PROJECT_ID/streaming-stt-service:latest',
+      '--cache-from', 'gcr.io/$PROJECT_ID/streaming-stt-service-cache:dependencies',
+      '--cache-from', 'gcr.io/$PROJECT_ID/streaming-stt-service-cache:base',
+      '--build-arg', 'BUILDKIT_INLINE_CACHE=1',
+      '--platform=linux/amd64', 
+      '-f', 'Dockerfile.optimized',
+      '-t', 'gcr.io/$PROJECT_ID/streaming-stt-service:$BUILD_ID',
+      '-t', 'gcr.io/$PROJECT_ID/streaming-stt-service:latest',
+      '--target', 'base',
+      '-t', 'gcr.io/$PROJECT_ID/streaming-stt-service-cache:base',
+      '.'
+    ]
+
+  # Build dependencies stage for caching
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '--cache-from', 'gcr.io/$PROJECT_ID/streaming-stt-service-cache:base',
+      '--cache-from', 'gcr.io/$PROJECT_ID/streaming-stt-service-cache:dependencies',
+      '--build-arg', 'BUILDKIT_INLINE_CACHE=1',
+      '--platform=linux/amd64',
+      '-f', 'Dockerfile.optimized',
+      '--target', 'dependencies',
+      '-t', 'gcr.io/$PROJECT_ID/streaming-stt-service-cache:dependencies',
+      '.'
+    ]
+
+  # Build final application image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '--cache-from', 'gcr.io/$PROJECT_ID/streaming-stt-service-cache:base',
+      '--cache-from', 'gcr.io/$PROJECT_ID/streaming-stt-service-cache:dependencies',
+      '--cache-from', 'gcr.io/$PROJECT_ID/streaming-stt-service:latest',
+      '--build-arg', 'BUILDKIT_INLINE_CACHE=1',
+      '--platform=linux/amd64',
+      '-f', 'Dockerfile.optimized',
+      '-t', 'gcr.io/$PROJECT_ID/streaming-stt-service:$BUILD_ID',
+      '-t', 'gcr.io/$PROJECT_ID/streaming-stt-service:latest',
+      '.'
+    ]
+
+  # Push all images (including cache layers)
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', 'gcr.io/$PROJECT_ID/streaming-stt-service']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', 'gcr.io/$PROJECT_ID/streaming-stt-service-cache']
+
+  # Deploy to Cloud Run with explicit traffic routing
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args: [
+      'run', 'deploy', 'streaming-stt-service',
+      '--image=gcr.io/$PROJECT_ID/streaming-stt-service:$BUILD_ID',
+      '--region=europe-west1',
+      '--platform=managed',
+      '--allow-unauthenticated',
+      '--memory=2Gi',
+      '--cpu=1',
+      '--concurrency=10',
+      '--timeout=600',
+      '--min-instances=1',
+      '--max-instances=10',
+      '--port=8080',
+      '--set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,ENABLE_STREAMING=true',
+      '--service-account=speech-translator@$PROJECT_ID.iam.gserviceaccount.com',
+      '--quiet'
+    ]
+
+# Optimized build options
+options:
+  machineType: 'E2_HIGHCPU_32'  # Faster machine for shorter build time (cost-effective)
+  substitution_option: 'ALLOW_LOOSE'
+  logging: CLOUD_LOGGING_ONLY
+  diskSizeGb: 50  # More disk for layer caching
+  env:
+    - 'DOCKER_BUILDKIT=1'  # Enable BuildKit for better caching
+
+# Reduced timeout due to optimizations
+timeout: 800s  # Reduced from 1200s due to caching
+
+# Available substitutions for customization
+substitutions:
+  _SERVICE_NAME: streaming-stt-service
+  _REGION: europe-west1

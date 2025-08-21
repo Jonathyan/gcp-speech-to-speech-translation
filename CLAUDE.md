@@ -49,6 +49,31 @@ npm run build     # Creates dist/ directory
 npm run serve:prod  # Serves production build
 ```
 
+### Deployment Commands (DevOps Iteration 2 Completed)
+```bash
+# Deploy backend with blue-green deployment
+./deploy-backend.sh
+
+# Deploy with specific environment
+source ./deploy-backend-config.sh
+load_environment prod  # or staging
+./deploy-backend.sh
+
+# Test deployment system
+./test-deployment.sh        # Run all deployment tests
+./test-deployment.sh health  # Test only health endpoint
+./test-deployment.sh syntax  # Test script syntax
+
+# Validate entire system end-to-end
+./validate-system.sh         # Full system validation
+./validate-system.sh backend # Test only backend
+./validate-system.sh frontend# Test only frontend
+
+# Manual rollback (if needed)
+gcloud run services update-traffic streaming-stt-service \
+  --region=europe-west1 --to-latest --quiet
+```
+
 ### Environment Setup
 - Set `GOOGLE_APPLICATION_CREDENTIALS="credentials/service-account.json"` 
 - Google Cloud services must be enabled: Speech-to-Text, Translation, Text-to-Speech

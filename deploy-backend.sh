@@ -10,6 +10,21 @@ REGION=${REGION:-"europe-west1"}
 SERVICE_NAME="streaming-stt-service"
 IMAGE_NAME="gcr.io/$PROJECT_ID/$SERVICE_NAME"
 TIMEOUT=600
+DRY_RUN=${DRY_RUN:-false}
+
+# Parse command line arguments
+for arg in "$@"; do
+    case $arg in
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+    esac
+done
+
+if [ "$DRY_RUN" = "true" ]; then
+    echo "⚠️  DRY RUN MODE - No actual deployment will occur"
+fi
 
 # Color codes for output
 RED='\033[0;31m'
@@ -80,12 +95,158 @@ if [ ! -z "$OLD_REVISIONS" ]; then
     done
 fi
 
-# Build and deploy with Cloud Build (replaces local Docker build)
+# Blue-Green Deployment Functions
+
+# Function: Deploy with Blue-Green Pattern
+deploy_with_blue_green() {
+    local new_revision=$1
+    
+    print_step "Starting blue-green deployment..."
+    
+    # Get current revision for potential rollback
+    local current_revision=$(gcloud run services describe $SERVICE_NAME \
+        --region=$REGION \
+        --format="value(status.latestReadyRevisionName)" 2>/dev/null || echo "")
+    
+    if [ ! -z "$current_revision" ]; then
+        print_step "Current revision: $current_revision"
+    fi
+    
+    # Deploy new revision with 0% traffic initially
+    print_step "Deploying new revision (0% traffic)..."
+    gcloud run services update-traffic $SERVICE_NAME \
+        --region=$REGION \
+        --to-revisions=$new_revision=0 \
+        --quiet
+    
+    # Wait for new revision to be ready
+    print_step "Waiting for new revision to be ready..."
+    if ! wait_for_revision_ready $new_revision; then
+        print_error "New revision failed to become ready"
+        return 1
+    fi
+    
+    # Health check new revision
+    print_step "Health checking new revision..."
+    if health_check_revision $new_revision; then
+        print_success "Health check passed!"
+        
+        # Gradually shift traffic (canary approach)
+        for percent in 25 50 75 100; do
+            print_step "Shifting $percent% traffic to new revision..."
+            gcloud run services update-traffic $SERVICE_NAME \
+                --region=$REGION \
+                --to-revisions=$new_revision=$percent \
+                --quiet
+            
+            sleep 5
+            if ! health_check_revision $new_revision; then
+                print_error "Health check failed at $percent% traffic"
+                if [ ! -z "$current_revision" ]; then
+                    rollback_to_revision $current_revision
+                fi
+                return 1
+            fi
+        done
+        
+        print_success "Blue-green deployment completed successfully!"    
+        return 0
+    else
+        print_error "Health check failed! Rolling back..."
+        if [ ! -z "$current_revision" ]; then
+            rollback_to_revision $current_revision
+        fi
+        return 1
+    fi
+}
+
+# Function: Enhanced Health Check with Retries
+health_check_revision() {
+    local revision=$1
+    local max_attempts=5
+    local attempt=0
+    
+    while [ $attempt -lt $max_attempts ]; do
+        print_step "Health check attempt $((attempt + 1))/$max_attempts..."
+        
+        local response=$(curl -s -w "%{http_code}" -o /tmp/health_response \
+            "$SERVICE_URL/health" 2>/dev/null || echo "000")
+        
+        if [ "$response" = "200" ]; then
+            local body=$(cat /tmp/health_response 2>/dev/null || echo "")
+            if [[ $body == *'"status":"ok"'* ]]; then
+                print_success "Health check passed for revision!"
+                return 0
+            fi
+        fi
+        
+        attempt=$((attempt + 1))
+        if [ $attempt -lt $max_attempts ]; then
+            print_warning "Health check failed, retrying in 10 seconds..."
+            sleep 10
+        fi
+    done
+    
+    print_error "Health check failed after $max_attempts attempts"
+    if [ -f /tmp/health_response ]; then
+        print_error "Last response: $(cat /tmp/health_response)"
+    fi
+    return 1
+}
+
+# Function: Automated Rollback
+rollback_to_revision() {
+    local target_revision=$1
+    
+    print_warning "Initiating rollback to revision: $target_revision"
+    
+    gcloud run services update-traffic $SERVICE_NAME \
+        --region=$REGION \
+        --to-revisions=$target_revision=100 \
+        --quiet
+    
+    if health_check_revision $target_revision; then
+        print_success "Rollback successful!"
+        return 0
+    else
+        print_error "Rollback failed - manual intervention required!"
+        print_error "Manual rollback command:"
+        print_error "gcloud run services update-traffic $SERVICE_NAME --region=$REGION --to-revisions=$target_revision=100"
+        return 1
+    fi
+}
+
+# Function: Wait for revision to be ready
+wait_for_revision_ready() {
+    local revision=$1
+    local max_attempts=30
+    local attempt=0
+    
+    while [ $attempt -lt $max_attempts ]; do
+        local status=$(gcloud run revisions describe $revision \
+            --region=$REGION \
+            --format="value(status.conditions[0].status)" 2>/dev/null || echo "Unknown")
+        
+        if [ "$status" = "True" ]; then
+            print_success "Revision $revision is ready!"
+            return 0
+        fi
+        
+        print_step "Waiting for revision to be ready... ($((attempt + 1))/$max_attempts)"
+        sleep 10
+        attempt=$((attempt + 1))
+    done
+    
+    print_error "Revision failed to become ready after 5 minutes"
+    return 1
+}
+
+# Build and deploy with Cloud Build
 print_step "Building and deploying with Cloud Build..."
 
 # Submit build to Cloud Build with custom substitutions
 BUILD_ID=$(gcloud builds submit \
-    --config=cloudbuild.yaml \
+    --config=cloudbuild-optimized.yaml \
     --substitutions=_SERVICE_NAME=$SERVICE_NAME,_REGION=$REGION \
     --format="value(id)" \
     --quiet)
@@ -115,11 +276,61 @@ else
     exit 1
 fi
 
+# Get new revision name from the deployment
+print_step "Getting new revision information..."
+NEW_REVISION=$(gcloud run services describe $SERVICE_NAME \
+    --region=$REGION \
+    --format="value(status.latestCreatedRevisionName)")
+
+if [ -z "$NEW_REVISION" ]; then
+    print_error "Could not determine new revision name"
+    exit 1
+fi
+
+print_step "New revision: $NEW_REVISION"
+
+# Deploy using blue-green strategy
+if ! deploy_with_blue_green $NEW_REVISION; then
+    print_error "Blue-green deployment failed!"
+    exit 1
+fi
+
+# Function to get service URL with fallback
+get_service_url() {
+    local service_name=$1
+    local region=$2
+    
+    # Try new URL format first (traffic[0].url)
+    local new_url=$(gcloud run services describe "$service_name" \
+        --region="$region" \
+        --format="value(status.traffic[0].url)" 2>/dev/null)
+    
+    if [ ! -z "$new_url" ]; then
+        echo "$new_url"
+        return 0
+    fi
+    
+    # Fallback to legacy URL format
+    local legacy_url=$(gcloud run services describe "$service_name" \
+        --region="$region" \
+        --format="value(status.url)" 2>/dev/null)
+    
+    if [ ! -z "$legacy_url" ]; then
+        echo "$legacy_url"
+        return 0
+    fi
+    
+    return 1
+}
+
 # Get the actual service URL
 print_step "Getting service URL..."
-SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \
-    --region=$REGION \
-    --format="value(status.url)")
+SERVICE_URL=$(get_service_url "$SERVICE_NAME" "$REGION")
+
+if [ -z "$SERVICE_URL" ]; then
+    print_error "Could not retrieve service URL"
+    exit 1
+fi
 
 # Wait for deployment to be ready
 print_step "Waiting for deployment to be ready..."

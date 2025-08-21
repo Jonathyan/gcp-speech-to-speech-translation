@@ -69,18 +69,52 @@ gcloud config set project $PROJECT_ID
 print_step "Auto-detecting backend URL..."
 BACKEND_URL=""
 
+# Function to get backend URL with fallback
+get_backend_url() {
+    local service_name=$1
+    local region=$2
+    
+    # Try new URL format first (traffic[0].url)
+    local new_url=$(gcloud run services describe "$service_name" \
+        --region="$region" \
+        --format="value(status.traffic[0].url)" 2>/dev/null)
+    
+    if [ ! -z "$new_url" ]; then
+        echo "$new_url"
+        return 0
+    fi
+    
+    # Fallback to legacy URL format
+    local legacy_url=$(gcloud run services describe "$service_name" \
+        --region="$region" \
+        --format="value(status.url)" 2>/dev/null)
+    
+    if [ ! -z "$legacy_url" ]; then
+        echo "$legacy_url"
+        return 0
+    fi
+    
+    return 1
+}
+
 # Try the new service name first
 if gcloud run services describe $BACKEND_SERVICE_NAME --region=$BACKEND_REGION &> /dev/null; then
-    BACKEND_URL=$(gcloud run services describe $BACKEND_SERVICE_NAME \
-        --region=$BACKEND_REGION \
-        --format="value(status.url)")
-    print_success "Found backend service: $BACKEND_SERVICE_NAME"
+    BACKEND_URL=$(get_backend_url "$BACKEND_SERVICE_NAME" "$BACKEND_REGION")
+    if [ ! -z "$BACKEND_URL" ]; then
+        print_success "Found backend service: $BACKEND_SERVICE_NAME"
+    else
+        print_error "Could not get URL for service: $BACKEND_SERVICE_NAME"
+        exit 1
+    fi
 # Fallback to old service name
 elif gcloud run services describe "streaming-stt-service" --region=$BACKEND_REGION &> /dev/null; then
-    BACKEND_URL=$(gcloud run services describe "streaming-stt-service" \
-        --region=$BACKEND_REGION \
-        --format="value(status.url)")
-    print_warning "Using fallback service: streaming-stt-service"
+    BACKEND_URL=$(get_backend_url "streaming-stt-service" "$BACKEND_REGION")
+    if [ ! -z "$BACKEND_URL" ]; then
+        print_warning "Using fallback service: streaming-stt-service"
+    else
+        print_error "Could not get URL for service: streaming-stt-service"
+        exit 1
+    fi
 else
     print_error "No backend service found! Please deploy the backend first."
     exit 1

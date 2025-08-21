@@ -3,7 +3,7 @@ const CONFIG = {
   // WebSocket URLs
   WEBSOCKET_URL: {
     development: 'ws://localhost:8000',
-    production: 'wss://streaming-stt-service-ysw2dobxea-ew.a.run.app'
+    production: 'wss://streaming-stt-service-980225887796.europe-west1.run.app'
   },
   
   // Connection settings

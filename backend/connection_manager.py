@@ -240,24 +240,33 @@ class ConnectionManager:
                 raise ConnectionClosed(None, None)
                 
             # FastAPI WebSocket doesn't have ping() method, use send_text with keepalive message
+            ping_time = time.time()
             await websocket.send_text('{"type":"keepalive","action":"ping"}')
-            metadata['last_ping'] = time.time()
-            logger.debug(f"Sent ping to connection in stream '{metadata['stream_id']}'")
+            metadata['last_ping'] = ping_time
+            stream_id = metadata['stream_id']
+            time_since_last_pong = ping_time - metadata['last_pong']
+            logger.info(f"🏓 PING sent to connection in stream '{stream_id}' - time since last pong: {time_since_last_pong:.1f}s")
             
         except (ConnectionClosed, WebSocketException) as e:
-            logger.info(f"Connection closed during ping: {e}")
+            logger.warning(f"⚠️ Connection closed during ping to stream '{metadata.get('stream_id', 'unknown')}': {e}")
             raise
         except Exception as e:
-            logger.error(f"Failed to send ping: {e}")
+            logger.error(f"❌ Failed to send ping to stream '{metadata.get('stream_id', 'unknown')}': {e}")
             raise
 
     async def handle_pong(self, websocket: WebSocket):
         """Handle pong response from WebSocket."""
+        current_time = time.time()
         with self._lock:
             if websocket in self._connection_metadata:
-                self._connection_metadata[websocket]['last_pong'] = time.time()
+                old_pong_time = self._connection_metadata[websocket]['last_pong']
+                self._connection_metadata[websocket]['last_pong'] = current_time
                 stream_id = self._connection_metadata[websocket]['stream_id']
-                logger.debug(f"Received pong from connection in stream '{stream_id}'")
+                time_since_last_pong = current_time - old_pong_time
+                logger.info(f"✅ PONG received from connection in stream '{stream_id}' - gap: {time_since_last_pong:.1f}s")
+                logger.info(f"🔄 Updated last_pong timestamp for stream '{stream_id}': {current_time}")
+            else:
+                logger.warning(f"⚠️ Received pong from unknown WebSocket connection - not in metadata")
 
     def get_keepalive_stats(self) -> Dict:
         """Get keepalive statistics for monitoring."""

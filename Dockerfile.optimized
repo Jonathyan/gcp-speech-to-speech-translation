@@ -1,0 +1,51 @@
+# Multi-stage optimized Dockerfile for Cloud Build caching
+FROM python:3.11-slim as base
+
+# Install system dependencies in separate layer (cached unless changed)
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create user in base layer (cached)
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Dependencies stage - optimized for caching
+FROM base as dependencies
+
+# Set working directory
+WORKDIR /app
+
+# Copy ONLY requirements first (enables caching of pip install)
+COPY requirements.txt .
+
+# Install Python dependencies (cached unless requirements.txt changes)
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Application stage
+FROM dependencies as application
+
+# Copy application code (this layer changes most frequently)
+COPY --chown=appuser:appuser . .
+
+# Set environment variables
+ENV PYTHONPATH="/app" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Switch to non-root user
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8080}/health || exit 1
+
+# Expose port
+EXPOSE 8080
+
+# Start command - WebSocket compatible
+CMD ["sh", "-c", "python -m uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --ws websockets"]

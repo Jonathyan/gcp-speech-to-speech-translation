@@ -89,6 +89,7 @@ function connectWebSocket(url, mode, streamId) {
   
   // Initialize audio player for listener mode
   if (mode === 'listener') {
+    console.log('🎧 Initializing listener mode with enhanced keepalive handling');
     initializeAudioPlayer();
   }
   
@@ -117,6 +118,23 @@ function connectWebSocket(url, mode, streamId) {
     currentWebSocket.onopen = function() {
       retryCount = 0;
       handleConnectionSuccess(mode);
+      
+      // Send connection confirmation for listeners to test bidirectional communication
+      if (mode === 'listener') {
+        console.log('🎧 LISTENER connection opened - sending test confirmation');
+        try {
+          const confirmMessage = JSON.stringify({
+            type: 'connection',
+            action: 'confirm',
+            timestamp: Date.now(),
+            clientType: 'frontend-listener'
+          });
+          currentWebSocket.send(confirmMessage);
+          console.log('🎧 LISTENER confirmation sent:', confirmMessage);
+        } catch (error) {
+          console.error('❌ Failed to send listener confirmation:', error);
+        }
+      }
     };
     
     currentWebSocket.onclose = function(event) {
@@ -134,10 +152,22 @@ function connectWebSocket(url, mode, streamId) {
     };
     
     currentWebSocket.onmessage = function(event) {
+      // Enhanced debugging for message handling
+      const isListener = mode === 'listener';
+      const messageType = event.data instanceof ArrayBuffer || event.data instanceof Blob ? 'binary' : 'text';
+      
+      if (isListener) {
+        console.log(`🎧 LISTENER received ${messageType} message:`, 
+          messageType === 'text' ? event.data : `${event.data.byteLength || event.data.size} bytes`);
+      }
+      
       // Handle both text and binary messages (ArrayBuffer or Blob)
       if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
         handleIncomingAudioData(event.data);
       } else {
+        if (isListener) {
+          console.log('🎧 LISTENER processing text message:', event.data);
+        }
         handleIncomingMessage(event.data);
       }
     };
@@ -429,10 +459,12 @@ function handleConnectionError(url, mode, streamId) {
  * @param {string} data - Message data
  */
 function handleIncomingMessage(data) {
+  console.log('📥 INCOMING MESSAGE:', typeof data, data);
+  
   try {
     // Try to parse as JSON for control messages
     const message = JSON.parse(data);
-    console.log('Control message received:', message);
+    console.log('📋 CONTROL MESSAGE PARSED:', message);
     
     // Handle different message types
     if (message.type === 'audio_start') {
@@ -440,14 +472,28 @@ function handleIncomingMessage(data) {
     } else if (message.type === 'audio_end') {
       handleAudioStreamEnd();
     } else if (message.type === 'keepalive' && message.action === 'ping') {
+      console.log('🏓 KEEPALIVE PING DETECTED - responding immediately');
+      console.log('🏓 Ping message details:', JSON.stringify(message));
       handleKeepalivePing();
+    } else if (message.type === 'connection') {
+      console.log('🔗 Connection message received:', message);
     } else if (message.type === 'error') {
       console.error('Server error:', message.error);
+    } else {
+      console.log('❓ Unhandled message type:', message.type, message);
     }
     
   } catch (error) {
-    // Not JSON, treat as plain text message
-    console.log('Text message received:', data);
+    console.log('⚠️ JSON PARSE FAILED:', error.message, 'Raw data:', data);
+    
+    // Check if this might be a keepalive ping in string format
+    if (typeof data === 'string' && data.includes('keepalive') && data.includes('ping')) {
+      console.log('🏓 STRING FORMAT PING detected - responding');
+      handleKeepalivePing();
+    } else {
+      // Not JSON, treat as plain text message
+      console.log('📝 NON-JSON TEXT MESSAGE:', data);
+    }
   }
 }
 
@@ -455,20 +501,51 @@ function handleIncomingMessage(data) {
  * Handle keepalive ping from server
  */
 function handleKeepalivePing() {
-  if (currentWebSocket && currentWebSocket.readyState === WebSocket.OPEN) {
-    const pongMessage = JSON.stringify({
-      type: 'keepalive',
-      action: 'pong'
-    });
+  const startTime = performance.now();
+  
+  console.log('🏓 KEEPALIVE PING HANDLER CALLED - preparing pong response');
+  console.log('🏓 WebSocket current state:', currentWebSocket ? currentWebSocket.readyState : 'null');
+  console.log('🏓 WebSocket states: CONNECTING=0, OPEN=1, CLOSING=2, CLOSED=3');
+  
+  // Validate WebSocket exists and is in correct state
+  if (!currentWebSocket) {
+    console.error('❌ CRITICAL: currentWebSocket is null - cannot send pong');
+    return;
+  }
+  
+  if (currentWebSocket.readyState !== WebSocket.OPEN) {
+    console.error(`❌ CRITICAL: WebSocket not open - state: ${currentWebSocket.readyState}, URL: ${currentWebSocket.url}`);
+    return;
+  }
+  
+  // Prepare pong message
+  const pongMessage = JSON.stringify({
+    type: 'keepalive',
+    action: 'pong',
+    timestamp: Date.now(),
+    clientType: 'frontend-listener',
+    responseTimeMs: (performance.now() - startTime).toFixed(2)
+  });
+  
+  console.log('🏓 PONG message prepared:', pongMessage);
+  
+  try {
+    // Send pong response
+    currentWebSocket.send(pongMessage);
+    const responseTime = (performance.now() - startTime).toFixed(2);
+    console.log(`✅ KEEPALIVE PONG SUCCESSFULLY SENT (${responseTime}ms response time)`);
+    console.log(`📤 Confirmed pong message sent:`, pongMessage);
     
-    try {
-      currentWebSocket.send(pongMessage);
-      console.log('✅ Keepalive pong sent to server');
-    } catch (error) {
-      console.error('Failed to send keepalive pong:', error);
-    }
-  } else {
-    console.warn('Cannot send keepalive pong - WebSocket not open');
+    // Additional confirmation
+    console.log(`📡 WebSocket state after send: ${currentWebSocket.readyState}`);
+    
+  } catch (error) {
+    console.error('❌ CRITICAL ERROR sending keepalive pong:', error);
+    console.error('❌ Error type:', error.constructor.name);
+    console.error('❌ Error message:', error.message);
+    console.error('❌ WebSocket state during error:', currentWebSocket.readyState);
+    console.error('❌ WebSocket URL:', currentWebSocket.url);
+    console.error('❌ Stack trace:', error.stack);
   }
 }
 
