@@ -51,6 +51,9 @@ npm run serve:prod  # Serves production build
 
 ### Deployment Commands (DevOps Iteration 2 Completed)
 ```bash
+# Setup DevOps virtual environment (first time only)
+./setup-devops-venv.sh
+
 # Deploy backend with blue-green deployment
 ./deploy-backend.sh
 
@@ -59,7 +62,7 @@ source ./deploy-backend-config.sh
 load_environment prod  # or staging
 ./deploy-backend.sh
 
-# Test deployment system
+# Test deployment system (uses devops-venv automatically)
 ./test-deployment.sh        # Run all deployment tests
 ./test-deployment.sh health  # Test only health endpoint
 ./test-deployment.sh syntax  # Test script syntax

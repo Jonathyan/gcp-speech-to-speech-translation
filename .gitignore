@@ -59,4 +59,4 @@ dist/
 frontend/dist/
 frontend/node_modules/
 frontend/coverage/
-frontend/*.log
+frontend/*.logdevops-venv/
