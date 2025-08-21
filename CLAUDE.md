@@ -85,3 +85,4 @@ When making changes, run the appropriate test suite first to understand current 
 Use  Context7 (mcp) to work with the latest documentations.
 
 Don't keep backwards compatibility unless explicitly stated in the project. Keep it simple when possible, rather then creating additional complexity when it is not needed. 
+

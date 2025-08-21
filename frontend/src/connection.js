@@ -196,7 +196,13 @@ function handleIncomingAudioData(audioData) {
  */
 async function playTestBeep(frequency = 800, duration = 0.3) {
   try {
+    // Ensure user has interacted first
+    enableAudioPlayback();
+    
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Resume AudioContext to handle autoplay policy
+    await audioContext.resume();
     
     // Create oscillator for beep sound
     const oscillator = audioContext.createOscillator();
@@ -433,6 +439,8 @@ function handleIncomingMessage(data) {
       handleAudioStreamStart();
     } else if (message.type === 'audio_end') {
       handleAudioStreamEnd();
+    } else if (message.type === 'keepalive' && message.action === 'ping') {
+      handleKeepalivePing();
     } else if (message.type === 'error') {
       console.error('Server error:', message.error);
     }
@@ -440,6 +448,27 @@ function handleIncomingMessage(data) {
   } catch (error) {
     // Not JSON, treat as plain text message
     console.log('Text message received:', data);
+  }
+}
+
+/**
+ * Handle keepalive ping from server
+ */
+function handleKeepalivePing() {
+  if (currentWebSocket && currentWebSocket.readyState === WebSocket.OPEN) {
+    const pongMessage = JSON.stringify({
+      type: 'keepalive',
+      action: 'pong'
+    });
+    
+    try {
+      currentWebSocket.send(pongMessage);
+      console.log('✅ Keepalive pong sent to server');
+    } catch (error) {
+      console.error('Failed to send keepalive pong:', error);
+    }
+  } else {
+    console.warn('Cannot send keepalive pong - WebSocket not open');
   }
 }
 
@@ -476,7 +505,23 @@ function initializeAudioPlayer() {
     // Simplified initialization for direct audio playback
     audioPlayer = {
       initialized: true,
-      playback: 'direct'
+      playback: 'direct',
+      isStreaming: false,
+      // Add missing methods to prevent JavaScript errors
+      startStreamPlayback: function() {
+        this.isStreaming = true;
+        console.log('Direct audio playback mode - streaming started');
+      },
+      stopStreamPlayback: function() {
+        this.isStreaming = false;
+        console.log('Direct audio playback mode - streaming stopped');
+      },
+      getQueueSize: function() {
+        return 0; // Direct playback has no queue
+      },
+      clearQueue: function() {
+        console.log('Direct audio playback mode - queue cleared (no-op)');
+      }
     };
     
     // Reset audio statistics
@@ -498,8 +543,13 @@ function initializeAudioPlayer() {
  */
 function cleanupAudioPlayer() {
   if (audioPlayer) {
-    audioPlayer.stopStreamPlayback();
-    audioPlayer.clearQueue();
+    // Safely call methods if they exist
+    if (typeof audioPlayer.stopStreamPlayback === 'function') {
+      audioPlayer.stopStreamPlayback();
+    }
+    if (typeof audioPlayer.clearQueue === 'function') {
+      audioPlayer.clearQueue();
+    }
     audioPlayer = null;
     console.log('AudioPlayer cleaned up');
   }

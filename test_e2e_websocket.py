@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 class EndToEndWebSocketTester:
     """Complete end-to-end WebSocket testing for speech-to-speech translation."""
     
-    def __init__(self, backend_url: str = "http://localhost:8000"):
+    def __init__(self, backend_url: str = "https://streaming-stt-service-980225887796.europe-west1.run.app"):
         self.backend_url = backend_url
         self.websocket_base = backend_url.replace('http', 'ws')
         self.stream_id = f"e2e-test-{int(time.time())}"

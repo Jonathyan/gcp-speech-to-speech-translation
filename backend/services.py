@@ -1,12 +1,8 @@
 import asyncio
 import logging
-import random
-import io
 import subprocess
-import tempfile
 import os
 from typing import Optional
-# Removed legacy imports that no longer exist in simplified codebase
 
 # Configureer basis logging om de flow te kunnen volgen
 logging.basicConfig(
@@ -14,37 +10,7 @@ logging.basicConfig(
 )
 
 
-async def mock_speech_to_text(audio_chunk: bytes) -> str:
-    """
-    Simuleert een Speech-to-Text API-aanroep.
-
-    Wacht 50ms en geeft een vaste tekst terug, met een kans op een fout.
-    """
-    logging.info("STT: Audio chunk ontvangen, start verwerking...")
-    
-    # Debug browser audio format
-    convert_audio_to_linear16(audio_chunk)
-    
-    if random.random() < 0.10:  # 10% kans op een fout
-        logging.error("STT: Gesimuleerde API-fout!")
-        raise Exception("STT API Error")
-
-    await asyncio.sleep(0.05)  # Simuleer 50ms netwerklatentie
-    result = "mocked dutch text"
-    logging.info(f"STT: Verwerking voltooid. Resultaat: '{result}'")
-    return result
-
-
-async def pass_through_speech_to_text(audio_chunk: bytes) -> str:
-    """
-    Pass-through STT functie voor isolatie testing.
-    Simuleert succesvolle STT zonder echte API call.
-    """
-    logging.info("STT: Pass-through mode - hardcoded result")
-    await asyncio.sleep(0.05)  # Behoud timing consistency
-    result = "hallo wereld"
-    logging.info(f"STT: Pass-through voltooid. Resultaat: '{result}'")
-    return result
+# Mock services removed - using only real Google Cloud APIs
 
 
 def convert_audio_to_linear16(audio_chunk: bytes) -> bytes:
@@ -351,21 +317,7 @@ async def real_translation(text: str) -> str:
         raise
 
 
-async def mock_translation(text: str) -> str:
-    """
-    Simuleert een Translation API-aanroep.
-
-    Wacht 50ms en geeft een vaste vertaling terug, met een kans op een fout.
-    """
-    logging.info(f"Translate: Tekst ontvangen: '{text}', start vertaling...")
-    if random.random() < 0.05:  # 5% kans op een fout
-        logging.error("Translate: Gesimuleerde API-fout!")
-        raise Exception("Translation API Error")
-
-    await asyncio.sleep(0.05)  # Simuleer 50ms netwerklatentie
-    result = "mocked english translation"
-    logging.info(f"Translate: Vertaling voltooid. Resultaat: '{result}'")
-    return result
+# Mock translation service removed - using only real Google Cloud Translation API
 
 
 async def real_text_to_speech(text: str) -> bytes:
@@ -461,232 +413,13 @@ async def real_text_to_speech(text: str) -> bytes:
         raise
 
 
-async def mock_text_to_speech(text: str) -> bytes:
-    """
-    Simuleert een Text-to-Speech API-aanroep.
-    
-    Geeft een tekst-marker terug die de frontend zal herkennen als test audio.
-    De frontend zal dan een hoorbare beep genereren.
-    """
-    logging.info(f"TTS: Tekst ontvangen: '{text}', start audiosynthese...")
-    if random.random() < 0.08:  # 8% kans op een fout
-        logging.error("TTS: Gesimuleerde API-fout!")
-        raise Exception("TTS API Error")
-
-    await asyncio.sleep(0.05)  # Simuleer 50ms netwerklatentie
-    
-    # Return a special marker that the frontend will recognize and convert to an audible beep
-    # This ensures the user will hear something audible for testing
-    result = b"TEST_AUDIO_BEEP_MARKER:" + text.encode('utf-8')
-    
-    logging.info(f"TTS: Mock audiosynthese voltooid. Test audio marker gegenereerd ({len(result)} bytes)")
-    return result
+# Mock TTS service removed - using only real Google Cloud TTS API
 
 
-class BufferedSpeechToText:
-    """
-    Buffered Speech-to-Text service that accumulates WebM chunks 
-    before sending to Google Cloud for better recognition accuracy.
-    """
-    
-    def __init__(self, 
-                 buffer_duration: float = 2.0,
-                 max_buffer_size: int = 500 * 1024,
-                 timeout_seconds: float = 5.0,
-                 stt_service = None):
-        """
-        Initialize buffered STT service.
-        
-        Args:
-            buffer_duration: Minimum time to wait before processing buffer
-            max_buffer_size: Maximum buffer size before forced processing  
-            timeout_seconds: Maximum wait time before forcing processing
-            stt_service: Optional mock STT service for testing
-        """
-        # Simplified buffer - just store basic parameters
-        self.buffer_duration = buffer_duration
-        self.max_buffer_size = max_buffer_size
-        self.timeout_seconds = timeout_seconds
-        self.stt_service = stt_service  # For testing
-        
-        self._logger = logging.getLogger(__name__)
-
-    async def process_chunk(self, audio_chunk: bytes) -> Optional[str]:
-        """
-        Process an audio chunk, buffering until ready for STT.
-        
-        Args:
-            audio_chunk: Raw audio chunk from MediaRecorder
-            
-        Returns:
-            Transcription text if buffer is ready, None if still buffering
-        """
-        if not audio_chunk:
-            return None
-            
-        # Simplified: just process immediately for quick wins testing
-        self._logger.debug(f"Processing audio chunk: {len(audio_chunk)} bytes")
-        
-        # For quick wins - just process directly
-        if len(audio_chunk) > 1000:
-            return await self._process_buffered_audio()
-        
-        return None  # Still buffering
-
-    async def _process_buffered_audio(self) -> str:
-        """
-        Process the buffered audio through STT pipeline.
-        
-        Returns:
-            Transcription text
-        """
-        # Simplified for quick wins - return test text
-        self._logger.info("Processing simplified buffered audio")
-        
-        try:
-            # Use mock service if provided (for testing)
-            if self.stt_service:
-                return self.stt_service.recognize_audio(b"test audio")
-            
-            # For quick wins - return test result
-            return "test speech recognition"
-            
-        except Exception as e:
-            self._logger.error(f"Buffered STT processing failed: {e}")
-            raise
+# Buffered and legacy services removed - production uses streaming STT only
 
 
-# Global buffered STT instance for the WebSocket handlers
-_buffered_stt_service = BufferedSpeechToText(
-    buffer_duration=2.0,  # Wait 2 seconds for complete audio
-    max_buffer_size=300 * 1024,  # 300KB max buffer
-    timeout_seconds=4.0   # Force processing after 4 seconds
-)
+# Buffered STT removed - using streaming STT only for production
 
 
-async def buffered_speech_to_text(audio_chunk: bytes) -> Optional[str]:
-    """
-    Process audio chunk through enhanced buffered STT service.
-    
-    This is the main interface that WebSocket handlers should use
-    for Phase 1 enhanced audio processing.
-    
-    Args:
-        audio_chunk: Raw audio chunk from browser
-        
-    Returns:
-        Transcription text if ready, None if still buffering
-    """
-    # Import here to avoid circular import
-    from .enhanced_stt_service import enhanced_stt_service
-    return await enhanced_stt_service.process_chunk(audio_chunk)
-
-
-class StreamingSTTService:
-    """
-    Service wrapper for streaming Speech-to-Text functionality.
-    
-    Integrates Google Cloud streaming STT with the translation pipeline
-    for real-time speech-to-speech translation.
-    """
-    
-    def __init__(self):
-        """Initialize streaming STT service."""
-        self._logger = logging.getLogger(__name__)
-        # Translation cache to avoid re-translating partial results
-        self._translation_cache = {}
-
-    async def create_stream(self, stream_id: str, broadcast_callback) -> bool:
-        """
-        Create new streaming STT session for WebSocket stream.
-        
-        Args:
-            stream_id: Unique stream identifier 
-            broadcast_callback: Async function to broadcast translated audio
-            
-        Returns:
-            True if stream created successfully
-        """
-        async def on_transcript(transcript: str, is_final: bool, confidence: float):
-            """Handle transcript results from streaming STT."""
-            try:
-                self._logger.info(f"[{stream_id}] STT: '{transcript}' (final: {is_final}, conf: {confidence:.2f})")
-                
-                # Only process final transcripts for translation
-                if is_final and transcript.strip():
-                    # Check cache to avoid re-translating
-                    cache_key = transcript.strip().lower()
-                    if cache_key in self._translation_cache:
-                        translated_text = self._translation_cache[cache_key]
-                        self._logger.debug(f"[{stream_id}] Using cached translation: '{translated_text}'")
-                    else:
-                        # Translate the text
-                        translated_text = await real_translation(transcript)
-                        self._translation_cache[cache_key] = translated_text
-                    
-                    # Generate speech audio
-                    audio_content = await real_text_to_speech(translated_text)
-                    
-                    # Broadcast to listeners
-                    await broadcast_callback(stream_id, audio_content)
-                    
-                    self._logger.info(f"[{stream_id}] Pipeline completed: '{transcript}' → '{translated_text}'")
-                
-            except Exception as e:
-                self._logger.error(f"[{stream_id}] Error processing transcript: {e}")
-
-        async def on_error(error: Exception):
-            """Handle streaming STT errors."""
-            self._logger.error(f"[{stream_id}] Streaming STT error: {error}")
-        
-        # Create streaming session
-        # Simplified for quick wins - just return success
-        success = True
-        
-        if success:
-            self._logger.info(f"[{stream_id}] Streaming STT session created")
-        else:
-            self._logger.error(f"[{stream_id}] Failed to create streaming STT session")
-        
-        return success
-
-    async def send_audio(self, stream_id: str, audio_chunk: bytes):
-        """
-        Send audio chunk to streaming STT session.
-        
-        Args:
-            stream_id: Target stream identifier
-            audio_chunk: Raw audio data from WebSocket
-        """
-        # Simplified for quick wins - just log
-        pass
-        self._logger.debug(f"[{stream_id}] Sent {len(audio_chunk)} bytes to streaming STT")
-
-    async def close_stream(self, stream_id: str):
-        """
-        Close streaming STT session.
-        
-        Args:
-            stream_id: Stream identifier to close
-        """
-        # Simplified for quick wins - just log
-        pass
-        
-        # Clear translation cache for this stream
-        cache_keys_to_remove = [key for key in self._translation_cache.keys() 
-                               if key.startswith(stream_id)]
-        for key in cache_keys_to_remove:
-            del self._translation_cache[key]
-        
-        self._logger.info(f"[{stream_id}] Streaming STT session closed")
-
-    def get_stats(self):
-        """Get streaming STT service statistics."""
-        # Simplified for quick wins
-        return {
-            'translation_cache_size': len(self._translation_cache)
-        }
-
-
-# Global streaming STT service instance
-streaming_stt_service = StreamingSTTService()
+# Legacy streaming service classes removed - production uses direct streaming_stt.py implementation

@@ -9,7 +9,7 @@ PROJECT_ID=${GOOGLE_CLOUD_PROJECT:-"lfhs-translate"}
 REGION=${REGION:-"europe-west1"}
 SERVICE_NAME="streaming-stt-service"
 IMAGE_NAME="gcr.io/$PROJECT_ID/$SERVICE_NAME"
-TIMEOUT=300
+TIMEOUT=600
 
 # Color codes for output
 RED='\033[0;31m'
@@ -80,38 +80,40 @@ if [ ! -z "$OLD_REVISIONS" ]; then
     done
 fi
 
-# Build and push Docker image
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-NEW_IMAGE="$IMAGE_NAME:$TIMESTAMP"
-print_step "Building Docker image: $NEW_IMAGE"
+# Build and deploy with Cloud Build (replaces local Docker build)
+print_step "Building and deploying with Cloud Build..."
 
-docker build --no-cache --platform linux/amd64 -f Dockerfile.simple -t $NEW_IMAGE .
+# Submit build to Cloud Build with custom substitutions
+BUILD_ID=$(gcloud builds submit \
+    --config=cloudbuild.yaml \
+    --substitutions=_SERVICE_NAME=$SERVICE_NAME,_REGION=$REGION \
+    --format="value(id)" \
+    --quiet)
 
-print_step "Pushing image to Google Container Registry..."
-docker push $NEW_IMAGE
+if [ $? -ne 0 ]; then
+    print_error "Cloud Build submission failed!"
+    exit 1
+fi
 
-# Also tag as latest
-docker tag $NEW_IMAGE $IMAGE_NAME:latest  
-docker push $IMAGE_NAME:latest
+print_step "Cloud Build started with ID: $BUILD_ID"
+print_step "Streaming build logs..."
 
-print_success "Docker image built and pushed"
+# Stream build logs in real-time
+gcloud builds log $BUILD_ID --stream
 
-# Deploy to Cloud Run with direct deployment (no YAML file)
-print_step "Deploying to Cloud Run..."
-gcloud run deploy $SERVICE_NAME \
-    --image=$NEW_IMAGE \
-    --region=$REGION \
-    --platform=managed \
-    --allow-unauthenticated \
-    --memory=2Gi \
-    --cpu=1 \
-    --concurrency=10 \
-    --timeout=$TIMEOUT \
-    --min-instances=1 \
-    --max-instances=10 \
-    --port=8080 \
-    --set-env-vars="GOOGLE_CLOUD_PROJECT=$PROJECT_ID,ENABLE_STREAMING=true" \
-    --service-account="speech-translator@$PROJECT_ID.iam.gserviceaccount.com"
+# Check build status
+BUILD_STATUS=$(gcloud builds describe $BUILD_ID --format="value(status)")
+
+if [ "$BUILD_STATUS" = "SUCCESS" ]; then
+    print_success "Cloud Build completed successfully!"
+else
+    print_error "Cloud Build failed with status: $BUILD_STATUS"
+    
+    # Show build logs for debugging
+    print_warning "Build logs:"
+    gcloud builds log $BUILD_ID --limit=50
+    exit 1
+fi
 
 # Get the actual service URL
 print_step "Getting service URL..."

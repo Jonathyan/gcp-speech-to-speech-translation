@@ -28,12 +28,15 @@ connection_manager = ConnectionManager()
 async def startup_event():
     """Initialize Google Cloud clients."""
     global translation_client, tts_client
+    logger.info("🚀 Starting up streaming STT service...")
     try:
         translation_client = translate.Client()
         tts_client = texttospeech.TextToSpeechClient()
         logger.info("✅ Google Cloud clients initialized")
+        logger.info("🔥 Service ready to accept connections")
     except Exception as e:
         logger.error(f"❌ Failed to initialize clients: {e}")
+        raise e
 
 @app.websocket("/ws/stream/{stream_id}")
 async def websocket_streaming(websocket: WebSocket, stream_id: str):
@@ -96,13 +99,23 @@ async def websocket_streaming(websocket: WebSocket, stream_id: str):
         logger.info(f"🔍 DEBUG: streaming_stt.client = {streaming_stt.client}")
         await streaming_stt.start_streaming(handle_transcript, handle_error)
         
-        # Process audio chunks
+        # Process audio chunks and handle keepalive
         while True:
             message = await websocket.receive()
             if message["type"] == "websocket.disconnect":
                 break
-                
-            if "bytes" in message and message.get("bytes"):
+            elif message["type"] == "websocket.text":
+                # Handle text messages (including keepalive)
+                try:
+                    import json
+                    data = json.loads(message.get("text", "{}"))
+                    if data.get("type") == "keepalive" and data.get("action") == "pong":
+                        # Streaming endpoint doesn't use connection_manager, just log
+                        logger.debug(f"Received keepalive pong from streaming client {client_id}")
+                except json.JSONDecodeError:
+                    # Ignore malformed JSON
+                    pass
+            elif "bytes" in message and message.get("bytes"):
                 audio_chunk = message["bytes"]
                 streaming_stt.send_audio_chunk(audio_chunk)
                 

@@ -1,4 +1,12 @@
-# Ignore frontend files during backend deployment
+# .gcloudignore - Optimized for Cloud Build speed and security
+# This file specifies files that are uploaded to Google Cloud Build
+
+# Git and version control
+.git
+.github
+.gitignore
+
+# Frontend files (not needed for backend build)
 frontend/
 *.js
 src/
@@ -11,15 +19,72 @@ firebase.json
 .firebaserc
 .firebase/
 
-# Python cache
+# Python cache and virtual environments
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
 .pytest_cache/
+.tox
+.coverage
+.coverage.*
+.cache
+.venv
+venv
+.env
+env
 
-# Docs and plans  
+# IDE and editors
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Documentation and logs (exclude from build)
 *.md
+!README.md
+!ARCHITECTURE.md
 plan/
+*.log
+*.png
+*.drawio
 
-# Test files
+# Test files and reports
 test_*.py
-tests/
+*_test.py
+*_report_*.json
+*_test_*.log
+testing/
+
+# Credentials and secrets (extra safety)
+credentials/
+*.key
+*.pem
+service-account*.json
+
+# Build artifacts
+build/
+*.egg-info/
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+
+# Keep essential files for build
+!backend/
+!requirements.txt
+!pyproject.toml  
+!Dockerfile.simple
+!cloudbuild.yaml

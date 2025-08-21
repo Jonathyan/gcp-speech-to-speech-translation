@@ -167,11 +167,16 @@ class SimpleStreamingSpeechToText:
                 # Only audio requests, no config
                 while self.is_streaming:
                     try:
-                        chunk = self._audio_queue.get(timeout=1.0)
+                        # Reduced timeout to 0.2s to prevent long gaps that cause STT timeouts
+                        chunk = self._audio_queue.get(timeout=0.2)
                         if chunk is None:  # Stop signal
                             break
                         yield speech.StreamingRecognizeRequest(audio_content=chunk)
                     except queue.Empty:
+                        # Send a small silence chunk to keep the stream alive
+                        # 16kHz, 16-bit mono, 0.1 second of silence = 3200 bytes
+                        silence_chunk = b'\x00' * 3200
+                        yield speech.StreamingRecognizeRequest(audio_content=silence_chunk)
                         continue
 
             # Call Google Cloud Speech API - SpeechHelpers expects config and requests separately

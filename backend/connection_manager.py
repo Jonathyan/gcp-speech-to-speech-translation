@@ -25,8 +25,8 @@ class ConnectionManager:
         self._keepalive_running = False
         
         # Keepalive configuration
-        self.PING_INTERVAL = 30  # seconds
-        self.PONG_TIMEOUT = 10   # seconds
+        self.PING_INTERVAL = 15  # seconds - reduced to stay ahead of Google STT timeout
+        self.PONG_TIMEOUT = 5    # seconds - faster recovery from connection issues
         
         logger.info("ConnectionManager initialized with keepalive mechanism")
 

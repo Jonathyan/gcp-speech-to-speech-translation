@@ -271,31 +271,34 @@ async function startBroadcast() {
   const url = window.AppConfig.getWebSocketURL();
   window.AppConnection.connectWebSocket(url, 'streaming', currentStreamId);
   
-  // Wait longer for connection to be established
+  // Wait longer for connection to be established (Cloud Run can be slow)
   setTimeout(async () => {
     const websocket = window.AppConnection.getCurrentWebSocket();
     if (!websocket || websocket.readyState !== WebSocket.OPEN) {
       // Give it more time if still connecting
       if (websocket && websocket.readyState === WebSocket.CONNECTING) {
+        console.log('WebSocket still connecting, waiting longer...');
         setTimeout(async () => {
           const ws = window.AppConnection.getCurrentWebSocket();
           if (!ws || ws.readyState !== WebSocket.OPEN) {
-            updateStatus('❌ Verbinding mislukt');
+            console.error('WebSocket failed to connect after extended wait');
+            updateStatus('❌ Verbinding mislukt - Backend timeout');
             window.AppAudio.stopAudioStream(broadcastStream);
             return;
           }
           startRecordingAfterConnection(ws, broadcastStream, currentStreamId);
-        }, 2000); // Wait 2 more seconds
+        }, 5000); // Wait 5 more seconds for Cloud Run
         return;
       }
-      updateStatus('❌ Verbinding mislukt');
+      console.error('WebSocket connection failed immediately');
+      updateStatus('❌ Verbinding mislukt - Backend niet bereikbaar');
       window.AppAudio.stopAudioStream(broadcastStream);
       return;
     }
     
     // Connection successful, start recording
     startRecordingAfterConnection(websocket, broadcastStream, currentStreamId);
-  }, 1000);
+  }, 3000); // Increased initial wait for Cloud Run
 }
 
 /**

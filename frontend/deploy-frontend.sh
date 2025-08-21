@@ -76,11 +76,11 @@ if gcloud run services describe $BACKEND_SERVICE_NAME --region=$BACKEND_REGION &
         --format="value(status.url)")
     print_success "Found backend service: $BACKEND_SERVICE_NAME"
 # Fallback to old service name
-elif gcloud run services describe "hybrid-stt-service" --region=$BACKEND_REGION &> /dev/null; then
-    BACKEND_URL=$(gcloud run services describe "hybrid-stt-service" \
+elif gcloud run services describe "streaming-stt-service" --region=$BACKEND_REGION &> /dev/null; then
+    BACKEND_URL=$(gcloud run services describe "streaming-stt-service" \
         --region=$BACKEND_REGION \
         --format="value(status.url)")
-    print_warning "Using fallback service: hybrid-stt-service"
+    print_warning "Using fallback service: streaming-stt-service"
 else
     print_error "No backend service found! Please deploy the backend first."
     exit 1
