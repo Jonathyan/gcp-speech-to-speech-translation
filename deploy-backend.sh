@@ -95,6 +95,34 @@ if [ ! -z "$OLD_REVISIONS" ]; then
     done
 fi
 
+# Function to get service URL with fallback
+get_service_url() {
+    local service_name=$1
+    local region=$2
+    
+    # Try new URL format first (traffic[0].url)
+    local new_url=$(gcloud run services describe "$service_name" \
+        --region="$region" \
+        --format="value(status.traffic[0].url)" 2>/dev/null)
+    
+    if [ ! -z "$new_url" ]; then
+        echo "$new_url"
+        return 0
+    fi
+    
+    # Fallback to legacy URL format
+    local legacy_url=$(gcloud run services describe "$service_name" \
+        --region="$region" \
+        --format="value(status.url)" 2>/dev/null)
+    
+    if [ ! -z "$legacy_url" ]; then
+        echo "$legacy_url"
+        return 0
+    fi
+    
+    return 1
+}
+
 # Blue-Green Deployment Functions
 
 # Function: Deploy with Blue-Green Pattern
@@ -102,6 +130,14 @@ deploy_with_blue_green() {
     local new_revision=$1
     
     print_step "Starting blue-green deployment..."
+    
+    # Get service URL first (needed for health checks)
+    SERVICE_URL=$(get_service_url "$SERVICE_NAME" "$REGION")
+    if [ -z "$SERVICE_URL" ]; then
+        print_error "Could not retrieve service URL for health checks"
+        return 1
+    fi
+    print_step "Service URL: $SERVICE_URL"
     
     # Get current revision for potential rollback
     local current_revision=$(gcloud run services describe $SERVICE_NAME \
@@ -294,34 +330,6 @@ if ! deploy_with_blue_green $NEW_REVISION; then
     print_error "Blue-green deployment failed!"
     exit 1
 fi
-
-# Function to get service URL with fallback
-get_service_url() {
-    local service_name=$1
-    local region=$2
-    
-    # Try new URL format first (traffic[0].url)
-    local new_url=$(gcloud run services describe "$service_name" \
-        --region="$region" \
-        --format="value(status.traffic[0].url)" 2>/dev/null)
-    
-    if [ ! -z "$new_url" ]; then
-        echo "$new_url"
-        return 0
-    fi
-    
-    # Fallback to legacy URL format
-    local legacy_url=$(gcloud run services describe "$service_name" \
-        --region="$region" \
-        --format="value(status.url)" 2>/dev/null)
-    
-    if [ ! -z "$legacy_url" ]; then
-        echo "$legacy_url"
-        return 0
-    fi
-    
-    return 1
-}
 
 # Get the actual service URL
 print_step "Getting service URL..."

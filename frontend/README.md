@@ -1,6 +1,6 @@
-# Frontend - Live Speech Translation Interface
+# Frontend - Live speech translation interface
 
-> 🎤 **Production-ready web interface** for real-time Dutch-to-English speech translation with enterprise-grade audio streaming and error recovery.
+**Production-ready web interface** for real-time Dutch-to-English speech translation with enterprise-grade audio streaming and error recovery.
 
 [![Frontend Live](https://img.shields.io/badge/Live%20Demo-🌐%20ONLINE-green)](https://lfhs-translate.web.app)
 [![Tests](https://img.shields.io/badge/Tests-210+%20Passing-green)](#-testing)
@@ -8,36 +8,36 @@
 
 **🔗 Part of**: [Dutch-to-English Speech Translation System](../README.md) | **📖 System Docs**: [Main README](../README.md) | **🔧 Development**: [CLAUDE.md](../CLAUDE.md)
 
-## 🌟 **Live Demo & Quick Links**
+## Live demo & quick links
 
-- **🌐 Live Interface**: https://lfhs-translate.web.app
-- **🎤 Speaker Mode**: Start broadcasting Dutch speech for real-time translation
-- **👂 Listener Mode**: Join to receive translated English audio
-- **📊 System Status**: [Backend Health](https://streaming-stt-service-ysw2dobxea-ew.a.run.app/health)
+- **Live interface**: https://lfhs-translate.web.app
+- **Speaker mode**: Start broadcasting Dutch speech for real-time translation
+- **Listener mode**: Join to receive translated English audio
+- **System status**: [Backend Health](https://streaming-stt-service-ysw2dobxea-ew.a.run.app/health)
 
-## ✨ **Key Features**
+## Key features
 
-### **🎵 Real-time Audio Pipeline**
+### Real-time audio pipeline
 - **100ms streaming chunks** for minimal latency WebSocket transmission
 - **Linear16 PCM encoding** optimized for Google Cloud Speech API
 - **Advanced error recovery** with circuit breaker patterns and exponential backoff
 - **Memory management** with buffer pooling and emergency cleanup mechanisms
 
-### **🛡️ Production Reliability**  
+### Production reliability  
 - **Circuit breaker patterns** - Auto-recovery after 10+ consecutive failures
 - **Exponential backoff with jitter** - Smart retry logic with adaptive delays
 - **AudioContext suspension recovery** - User gesture prompts for audio activation
 - **Quality-based adaptive behavior** - System adjusts based on real-time performance
 
-### **🎯 User Experience Excellence**
+### User experience excellence
 - **Dutch interface** with context-aware error messages and recovery suggestions
 - **Comprehensive diagnostics** - System health reports and troubleshooting recommendations
 - **Visual feedback system** - Real-time audio levels, quality indicators, progress bars
 - **Multi-browser support** - Automatic format detection with graceful fallbacks
 
-## 🚀 **Quick Start**
+## Quick start
 
-### **For Development**
+### For development
 
 ```bash
 # Navigate to frontend directory
@@ -55,7 +55,7 @@ npm run build
 npm run serve:prod
 ```
 
-### **For System Integration**
+### For system integration
 
 See [Main README - Development Setup](../README.md#-development-setup) for complete system setup including backend integration.
 
@@ -66,9 +66,9 @@ poetry run uvicorn backend.main:app --reload  # Backend (Terminal 1)
 cd frontend && npm run serve               # Frontend (Terminal 2)
 ```
 
-## 📁 **Frontend Architecture**
+## Frontend architecture
 
-### **File Structure**
+### File structure
 
 ```
 frontend/
@@ -111,9 +111,9 @@ frontend/
     └── manual-test-script.md             # Manual testing procedures
 ```
 
-### **Core Components**
+### Core components
 
-#### **🎵 Audio Processing Chain**
+#### Audio processing chain
 ```javascript
 Microphone → MediaRecorder → wavEncoder → WebSocket → Backend
     ↓              ↓             ↓           ↓
@@ -121,7 +121,7 @@ getUserMedia   100ms chunks   Linear16    Streaming STT
   (16kHz)      (real-time)     (PCM)      (Google Cloud)
 ```
 
-#### **🔊 Audio Playback System**
+#### Audio playback system
 ```javascript
 WebSocket ← Backend ← TTS ← Translation ← STT
     ↓          ↓        ↓        ↓         ↓
@@ -129,9 +129,9 @@ AudioPlayer  MP3    English   Dutch→EN   Dutch
 (Web Audio)  chunks  audio     text      speech
 ```
 
-## ⚙️ **Configuration**
+## Configuration
 
-### **Production Audio Settings**
+### Production audio settings
 
 ```javascript
 // src/config.js - Optimized for real-time performance
@@ -169,7 +169,7 @@ export const CONFIG = {
 };
 ```
 
-### **Environment Integration**
+### Environment integration
 
 ```bash
 # Development - integrates with local backend
@@ -183,9 +183,9 @@ npm run build && npm run serve:prod
 # Backend:  https://streaming-stt-service-ysw2dobxea-ew.a.run.app
 ```
 
-## 🧪 **Testing**
+## Testing
 
-### **Test Suite Overview** (210+ Tests)
+### Test suite overview (210+ tests)
 
 | Test Category | Tests | Focus Area | Coverage |
 |---------------|-------|------------|----------|
@@ -195,7 +195,7 @@ npm run build && npm run serve:prod
 | **User Interface** | 42 tests | Dutch UI, diagnostics, error handling | ✅ 85%+ |
 | **Utilities** | 33+ tests | Browser compatibility, utilities | ✅ 95%+ |
 
-### **Running Tests**
+### Running tests
 
 ```bash
 # All tests with coverage
@@ -216,9 +216,9 @@ npm test -- --coverage
 open coverage/lcov-report/index.html
 ```
 
-### **Test Categories**
+### Test categories
 
-#### **🎵 Audio System Tests**
+#### Audio system tests
 ```bash
 # Test audio capture, encoding, and streaming
 npm test tests/audio.test.js
@@ -231,7 +231,7 @@ npm test tests/audio.test.js
 # - Memory management and cleanup
 ```
 
-#### **🔊 Audio Player Tests**
+#### Audio player tests
 ```bash
 # Test audio playback and error recovery
 npm test tests/audioPlayer.test.js
@@ -244,7 +244,7 @@ npm test tests/audioPlayer.test.js
 # - Performance metrics and health reporting
 ```
 
-#### **🔗 WebSocket Tests**
+#### WebSocket tests
 ```bash
 # Test connection management and streaming
 npm test tests/connection.test.js
@@ -257,11 +257,11 @@ npm test tests/connection.test.js
 # - Rate limiting and connection state management
 ```
 
-## 🎯 **User Interface Guide**
+## User interface guide
 
-### **Main Interface Controls**
+### Main interface controls
 
-#### **🎤 Speaker Mode**
+#### Speaker mode
 ```javascript
 // Start broadcasting Dutch speech
 document.getElementById('startBroadcast').click()
@@ -271,7 +271,7 @@ document.getElementById('startBroadcast').click()
 // → Shows audio level visualization
 ```
 
-#### **👂 Listener Mode**  
+#### Listener mode  
 ```javascript
 // Join as listener with stream ID
 document.getElementById('startListening').click()
@@ -280,7 +280,7 @@ document.getElementById('startListening').click()
 // → Shows connection status and audio queue
 ```
 
-#### **🔧 Diagnostic Tools**
+#### Diagnostic tools
 ```javascript
 // Run comprehensive system diagnostics  
 document.getElementById('runDiagnostics').click()
@@ -290,26 +290,26 @@ document.getElementById('runDiagnostics').click()
 // → Displays performance metrics
 ```
 
-### **Visual Feedback System**
+### Visual feedback system
 
-#### **🎵 Audio Level Visualization**
+#### Audio level visualization
 - **Green**: Good audio levels (optimal for speech recognition)
 - **Yellow**: Acceptable levels (minor adjustments recommended)  
 - **Red**: Poor levels (microphone adjustment needed)
 
-#### **📊 Connection Status Indicators**
+#### Connection status indicators
 - **🟢 Connected**: WebSocket active, ready for streaming
 - **🟡 Connecting**: Attempting connection with retry logic
 - **🔴 Disconnected**: Connection failed, automatic retry in progress
 
-#### **⚡ Performance Metrics**
+#### Performance metrics
 - **Latency**: Real-time end-to-end processing time
 - **Success Rate**: Percentage of successful audio chunk processing
 - **Queue Status**: Audio playback buffer health and memory usage
 
-## 🛡️ **Error Recovery & Circuit Breaker**
+## Error recovery & circuit breaker
 
-### **Advanced Error Recovery System**
+### Advanced error recovery system
 
 ```javascript
 // Circuit breaker implementation with exponential backoff
@@ -342,7 +342,7 @@ class CircuitBreaker {
 }
 ```
 
-### **Dutch Error Messages**
+### Dutch error messages
 
 The system provides context-aware error messages in Dutch:
 
@@ -352,9 +352,9 @@ The system provides context-aware error messages in Dutch:
 - **🔗 WebSocket Failures**: "Verbinding verbroken - automatisch opnieuw proberen..."
 - **✅ Recovery Success**: "Audio systeem hersteld - verbinding actief"
 
-## 🌐 **Browser Support**
+## Browser support
 
-### **Supported Browsers**
+### Supported browsers
 
 | Browser | Version | WebRTC | MediaRecorder | WebSocket | AudioContext |
 |---------|---------|--------|---------------|-----------|--------------|
@@ -363,7 +363,7 @@ The system provides context-aware error messages in Dutch:
 | **Safari** | 7+ | ✅ Limited | ✅ Limited | ✅ Full | ✅ Full |
 | **Edge** | 12+ | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
 
-### **Automatic Fallbacks**
+### Automatic fallbacks
 
 ```javascript
 // Audio format detection and fallback chain
@@ -387,9 +387,9 @@ if (!window.AudioContext && !window.webkitAudioContext) {
 }
 ```
 
-## 🚢 **Deployment**
+## Deployment
 
-### **Production Build & Deployment**
+### Production build & deployment
 
 ```bash
 # Build for production
@@ -408,7 +408,7 @@ npm run build
 firebase deploy --only hosting
 ```
 
-### **Integration with Backend Deployment**
+### Integration with backend deployment
 
 See [Main README - Deployment](../README.md#-deployment--devops) for full system deployment:
 
@@ -422,7 +422,7 @@ cd frontend && ./deploy-frontend.sh       # Frontend to Firebase
 ./validate-system.sh frontend             # Frontend-specific checks
 ```
 
-### **Environment Configuration**
+### Environment configuration
 
 ```javascript
 // Frontend automatically detects environment
@@ -434,11 +434,11 @@ const getWebSocketURL = () => {
 };
 ```
 
-## 🔍 **Troubleshooting**
+## Troubleshooting
 
-### **Common Frontend Issues**
+### Common frontend issues
 
-#### **🎤 Microphone Access Problems**
+#### Microphone access problems
 ```bash
 # Issue: "Microphone access denied"
 # Solution: Check browser permissions and HTTPS requirement
@@ -447,7 +447,7 @@ const getWebSocketURL = () => {
 # - Try refreshing page and re-granting permission
 ```
 
-#### **🔊 Audio Playback Issues**
+#### Audio playback issues
 ```bash
 # Issue: "Audio not playing" or "AudioContext suspended"
 # Solution: User interaction required for audio
@@ -456,7 +456,7 @@ const getWebSocketURL = () => {
 # - Check browser console for specific AudioContext errors
 ```
 
-#### **🔗 WebSocket Connection Failures**
+#### WebSocket connection failures
 ```bash
 # Issue: "WebSocket connection failed"
 # Solution: Verify backend health and network connectivity
@@ -464,7 +464,7 @@ const getWebSocketURL = () => {
 curl -f https://streaming-stt-service-ysw2dobxea-ew.a.run.app/health  # Backend health
 ```
 
-### **Debug Information**
+### Debug information
 
 Open browser console (F12) for detailed debugging:
 
@@ -483,7 +483,7 @@ console.log('Connection Status:', window.connection?.getStatus());
 console.log('Performance Metrics:', window.performanceMonitor?.getMetrics());
 ```
 
-### **Performance Optimization**
+### Performance optimization
 
 ```bash
 # Check memory usage and performance
@@ -498,9 +498,9 @@ npm test tests/audioPlayer.test.js -- --verbose  # Memory and performance tests
 npm test tests/utils.test.js -- --verbose        # Browser compatibility tests
 ```
 
-## 🔗 **Integration with System**
+## Integration with system
 
-### **Development Workflow Integration**
+### Development workflow integration
 
 ```bash
 # Complete development setup (run from project root)
@@ -518,7 +518,7 @@ cd frontend && npm test                   # Frontend tests
 ./validate-system.sh                     # Integration tests
 ```
 
-### **System Monitoring Integration**
+### System monitoring integration
 
 The frontend integrates with system-wide monitoring:
 
@@ -533,7 +533,7 @@ The frontend integrates with system-wide monitoring:
 
 ---
 
-## 📄 **Additional Resources**
+## Additional resources
 
 - **📖 System Documentation**: [Main README](../README.md)
 - **🔧 Development Guide**: [CLAUDE.md](../CLAUDE.md)  
@@ -543,4 +543,4 @@ The frontend integrates with system-wide monitoring:
 
 ---
 
-**🎯 Production-ready frontend with enterprise-grade audio streaming, comprehensive error recovery, and seamless system integration.**
+Production-ready frontend with enterprise-grade audio streaming, comprehensive error recovery, and seamless system integration.

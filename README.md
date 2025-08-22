@@ -1,6 +1,6 @@
-# Dutch-to-English Live Speech Translation Service
+# Dutch-to-English live speech translation service
 
-> 🎯 **Production Ready**: Real-time speech-to-speech translation with enterprise-grade deployment automation
+**Production ready**: Real-time speech-to-speech translation with enterprise-grade deployment automation
 
 [![Production Status](https://img.shields.io/badge/Production-✅%20OPERATIONAL-green)](https://lfhs-translate.web.app)
 [![Backend Health](https://img.shields.io/badge/Backend-✅%20HEALTHY-green)](https://streaming-stt-service-ysw2dobxea-ew.a.run.app/health)
@@ -11,27 +11,27 @@ Real-time Dutch-to-English speech translation system with clean streaming archit
 
 ![Frontend Interface](frontend-mock.png)
 
-## 🌟 **Live Demo**
+## Live demo
 
-- **🌐 Frontend**: https://lfhs-translate.web.app
-- **🔧 Backend Health**: https://streaming-stt-service-ysw2dobxea-ew.a.run.app/health  
-- **⚡ Performance**: <1s end-to-end latency, >90% success rate
+- **Frontend**: https://lfhs-translate.web.app
+- **Backend health**: https://streaming-stt-service-ysw2dobxea-ew.a.run.app/health  
+- **Performance**: <1s end-to-end latency, >90% success rate
 
-## 📋 **Table of Contents**
+## Table of contents
 
-- [🚀 Quick Start](#-quick-start)
-- [🏗️ Architecture](#️-architecture)
-- [💻 Development Setup](#-development-setup)
-- [🚢 Deployment & DevOps](#-deployment--devops)
-- [🧪 Testing](#-testing)
-- [📁 Project Structure](#-project-structure)
-- [🔧 Configuration](#-configuration)
-- [🔍 Troubleshooting](#-troubleshooting)
-- [🤝 Contributing](#-contributing)
+- [Quick start](#quick-start)
+- [Architecture](#architecture)
+- [Development setup](#development-setup)
+- [Deployment & DevOps](#deployment--devops)
+- [Testing](#testing)
+- [Project structure](#project-structure)
+- [Configuration](#configuration)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
 
-## 🚀 **Quick Start**
+## Quick start
 
-### **Prerequisites**
+### Prerequisites
 
 ```bash
 # Required software
@@ -49,7 +49,7 @@ Real-time Dutch-to-English speech translation system with clean streaming archit
 - Cloud Build
 ```
 
-### **1-Minute Setup**
+### 1-minute setup
 
 ```bash
 # Clone repository
@@ -71,7 +71,7 @@ cd frontend && npm install && cd ..
 ./validate-system.sh
 ```
 
-### **Development Mode**
+### Development mode
 
 ```bash
 # Terminal 1: Backend
@@ -83,7 +83,7 @@ cd frontend && npm run serve
 # Access: http://localhost:3000
 ```
 
-### **Production Deployment**
+### Production deployment
 
 ```bash
 # Deploy with blue-green strategy
@@ -93,9 +93,9 @@ cd frontend && npm run serve
 cd frontend && ./deploy-frontend.sh
 ```
 
-## 🏗️ **Architecture**
+## Architecture
 
-### **System Overview**
+### System overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -122,17 +122,17 @@ cd frontend && ./deploy-frontend.sh
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### **Key Design Principles**
+### Key design principles
 
-- **🎯 Real-time Performance**: <1s end-to-end latency with 100ms audio chunks
-- **🛡️ Production Reliability**: Circuit breakers, health checks, automated rollback
-- **🚀 Zero-Downtime Deployment**: Blue-green deployment with gradual traffic shifting
-- **🧪 Test-Driven Development**: 291 comprehensive tests across all components
-- **📊 Comprehensive Monitoring**: Health endpoints, performance metrics, diagnostics
+- **Real-time performance**: <1s end-to-end latency with 100ms audio chunks
+- **Production reliability**: Circuit breakers, health checks, automated rollback
+- **Zero-downtime deployment**: Blue-green deployment with gradual traffic shifting
+- **Test-driven development**: 291 comprehensive tests across all components
+- **Comprehensive monitoring**: Health endpoints, performance metrics, diagnostics
 
-## 💻 **Development Setup**
+## Development setup
 
-### **First-Time Setup**
+### First-time setup
 
 ```bash
 # 1. Clone and enter directory
@@ -157,7 +157,7 @@ export GOOGLE_APPLICATION_CREDENTIALS="credentials/service-account.json"
 ./test-deployment.sh
 ```
 
-### **Daily Development Workflow**
+### Daily development workflow
 
 ```bash
 # Backend development
@@ -177,7 +177,7 @@ cd frontend && npm test              # Frontend tests (210+ tests)
 ./validate-system.sh                # Full system validation
 ```
 
-### **Testing Your Changes**
+### Testing your changes
 
 ```bash
 # Quick syntax and file validation
@@ -197,25 +197,25 @@ cd frontend && npm test
 ./deploy-backend.sh
 ```
 
-## 🚢 **Deployment & DevOps**
+## Deployment & DevOps
 
-### **🔥 DevOps Iteration 2: COMPLETED**
+### DevOps iteration 2: COMPLETED
 
 Our deployment system features enterprise-grade automation:
 
-#### **✅ Blue-Green Deployment Features**
+#### Blue-green deployment features
 - **Zero-downtime deployments** with gradual traffic shifting (25→50→75→100%)
 - **Automated health checks** with 5 retry attempts before rollback
 - **Instant rollback** on failure with one-command recovery
 - **Revision management** with automatic cleanup of old versions
 
-#### **✅ Comprehensive Testing Infrastructure** 
+#### Comprehensive testing infrastructure 
 - **8 deployment tests** covering configuration, syntax, health
 - **8 system validations** for end-to-end operational verification
 - **Performance monitoring** with response time and memory tracking
 - **Security validation** with headers and configuration checks
 
-### **Deployment Commands**
+### Deployment commands
 
 ```bash
 # Setup (first time only)
@@ -245,7 +245,7 @@ gcloud run services update-traffic streaming-stt-service \
   --region=europe-west1 --to-latest --quiet
 ```
 
-### **Environment Configuration**
+### Environment configuration
 
 ```bash
 # Load production environment
@@ -260,7 +260,7 @@ load_environment staging
 ./deploy-backend.sh
 ```
 
-### **Deployment Architecture**
+### Deployment architecture
 
 ```
 🔄 BLUE-GREEN DEPLOYMENT FLOW
@@ -279,9 +279,9 @@ load_environment staging
     └── Manual rollback commands
 ```
 
-## 🧪 **Testing**
+## Testing
 
-### **Test Suite Overview** (291 Total Tests)
+### Test suite overview (291 total tests)
 
 | Component | Tests | Coverage | Status |
 |-----------|-------|----------|---------|
@@ -290,7 +290,7 @@ load_environment staging
 | **Deployment** | 8 tests | System validation | ✅ 100% passing |
 | **Integration** | 8 validations | End-to-end | ✅ 100% passing |
 
-### **Backend Testing**
+### Backend testing
 
 ```bash
 # Run all backend tests
@@ -306,7 +306,7 @@ poetry run pytest backend/tests/test_streaming_stt.py -v
 poetry run pytest --cov=backend --cov-report=html
 ```
 
-### **Frontend Testing**
+### Frontend testing
 
 ```bash
 cd frontend
@@ -325,7 +325,7 @@ npm test tests/utils.test.js         # Utility functions
 npm test -- --coverage
 ```
 
-### **Deployment & System Testing**
+### Deployment & system testing
 
 ```bash
 # Deployment system tests (8 tests)
@@ -341,7 +341,7 @@ npm test -- --coverage
 ./validate-system.sh integration     # End-to-end integration
 ```
 
-### **Manual Testing Procedures**
+### Manual testing procedures
 
 1. **🎤 Audio Testing**: Test microphone capture and processing
 2. **🔗 Connection Testing**: Verify WebSocket streaming functionality  
@@ -349,7 +349,7 @@ npm test -- --coverage
 4. **👥 Multi-user Testing**: Multiple listeners from single speaker
 5. **🛡️ Error Recovery Testing**: Network failures, audio errors, etc.
 
-## 📁 **Project Structure**
+## Project structure
 
 ```
 gcp-speech-to-speech-translation/
@@ -416,9 +416,9 @@ gcp-speech-to-speech-translation/
     └── monitoring-dashboard.json       # Monitoring configuration
 ```
 
-## 🔧 **Configuration**
+## Configuration
 
-### **Environment Variables**
+### Environment variables
 
 ```bash
 # Required
@@ -432,7 +432,7 @@ export TRANSLATION_TARGET_LANGUAGE="en"
 export REGION="europe-west1"
 ```
 
-### **Google Cloud Setup**
+### Google Cloud setup
 
 ```bash
 # Authenticate
@@ -443,7 +443,7 @@ gcloud config set project lfhs-translate
 gcloud services list --enabled | grep -E "(speech|translate|texttospeech|run)"
 ```
 
-### **Frontend Configuration**
+### Frontend configuration
 
 Edit `frontend/src/config.js`:
 
@@ -470,11 +470,11 @@ ENDPOINTS: {
 }
 ```
 
-## 🔍 **Troubleshooting**
+## Troubleshooting
 
-### **Common Issues & Solutions**
+### Common issues & solutions
 
-#### **🚫 Deployment Issues**
+#### Deployment issues
 
 ```bash
 # Issue: Cloud Build timeout
@@ -493,7 +493,7 @@ gcloud run services update-traffic streaming-stt-service \
   --region=europe-west1 --to-latest --quiet
 ```
 
-#### **🎤 Audio Issues**
+#### Audio issues
 
 ```bash
 # Issue: Microphone access denied
@@ -511,7 +511,7 @@ cd frontend && npm test tests/audio.test.js
 curl -f https://streaming-stt-service-ysw2dobxea-ew.a.run.app/health
 ```
 
-#### **🔧 Development Issues**
+#### Development issues
 
 ```bash
 # Issue: Poetry dependency conflicts
@@ -529,9 +529,9 @@ poetry run pytest -xvs              # Verbose backend tests
 cd frontend && npm test -- --verbose # Verbose frontend tests
 ```
 
-### **Emergency Procedures**
+### Emergency procedures
 
-#### **🚨 Quick Rollback**
+#### Quick rollback
 
 ```bash
 # Automatic rollback (built into deployment)
@@ -547,7 +547,7 @@ gcloud run services update-traffic streaming-stt-service \
   --region=europe-west1 --to-revisions=REVISION_NAME=100 --quiet
 ```
 
-#### **🔍 Debugging Commands**
+#### Debugging commands
 
 ```bash
 # Service status and logs
@@ -563,7 +563,7 @@ gcloud builds log BUILD_ID
 curl -s https://streaming-stt-service-ysw2dobxea-ew.a.run.app/health | jq
 ```
 
-### **Getting Help**
+### Getting help
 
 1. **📋 Run Diagnostics**: `./validate-system.sh` for comprehensive system check
 2. **🧪 Test Deployment**: `./test-deployment.sh` for deployment validation  
@@ -571,9 +571,9 @@ curl -s https://streaming-stt-service-ysw2dobxea-ew.a.run.app/health | jq
 4. **🌐 Frontend Issues**: Open browser console for detailed error information
 5. **📖 Documentation**: Check `CLAUDE.md` for development guidance
 
-## 🤝 **Contributing**
+## Contributing
 
-### **Development Workflow**
+### Development workflow
 
 ```bash
 # 1. Setup development environment
@@ -601,7 +601,7 @@ git commit -m "feat: your feature description"
 git push origin feature/your-feature-name
 ```
 
-### **Code Quality Standards**
+### Code quality standards
 
 - **🧪 Tests Required**: All new features must include tests
 - **📋 Type Safety**: Backend uses Python type hints, frontend uses JSDoc
@@ -609,30 +609,30 @@ git push origin feature/your-feature-name
 - **🛡️ Error Handling**: Implement circuit breaker patterns for external APIs
 - **📖 Documentation**: Update relevant README sections
 
-### **Branch Strategy**
+### Branch strategy
 
 - **`master`**: Production-ready code
 - **`develop`**: Integration branch for features  
 - **`feature/*`**: New features and improvements
 - **`hotfix/*`**: Critical production fixes
 
-### **Pull Request Requirements**
+### Pull request requirements
 
 1. **✅ All tests passing**: `./test-deployment.sh && ./validate-system.sh`
 2. **📊 Performance validation**: No regression in latency/success rate
 3. **📖 Documentation updated**: README, CLAUDE.md, or architecture docs
 4. **🔄 Deployment tested**: Successfully deployed to test environment
 
-## 📊 **Production Status**
+## Production status
 
-### **Current Deployment** 
+### Current deployment 
 
 - **🌐 Frontend**: https://lfhs-translate.web.app (Firebase Hosting)
 - **🖥️ Backend**: https://streaming-stt-service-ysw2dobxea-ew.a.run.app (Cloud Run)
 - **📊 Health**: All systems operational with automated monitoring
 - **⚡ Performance**: <1s latency, >90% success rate, 10+ concurrent streams
 
-### **Monitoring & Metrics**
+### Monitoring & metrics
 
 ```bash
 # Health checks
@@ -645,7 +645,7 @@ curl https://streaming-stt-service-ysw2dobxea-ew.a.run.app/health
 ./validate-system.sh
 ```
 
-### **Technology Stack**
+### Technology stack
 
 - **Backend**: Python 3.11, FastAPI, Google Cloud APIs
 - **Frontend**: Vanilla JavaScript, Web Audio API, WebSocket
@@ -655,10 +655,10 @@ curl https://streaming-stt-service-ysw2dobxea-ew.a.run.app/health
 
 ---
 
-## 📄 **License**
+## License
 
 This project is for educational and demonstration purposes.
 
 ---
 
-**🎯 Ready for production with enterprise-grade reliability, comprehensive testing, and zero-downtime deployment automation.**
+Ready for production with enterprise-grade reliability, comprehensive testing, and zero-downtime deployment automation.
